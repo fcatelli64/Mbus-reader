@@ -19,8 +19,8 @@ un'entità per ogni valore.
 - **Cavo M-Bus**: i due fili del cavo M-Bus che esce dal contatore vanno ai due
   morsetti M-Bus dell'adattatore. La polarità è indifferente. Gli altri fili
   del contatore (i 2 ingressi impulsi) non vanno collegati all'adattatore.
-- **Raspberry Pi 2**: non ha il Wi-Fi integrato, serve una chiavetta Wi-Fi USB
-  (oppure il cavo Ethernet). Basta Raspberry Pi OS Lite.
+- **Raspberry Pi 3**: installa *Raspberry Pi OS Lite (64-bit)* con Raspberry Pi
+  Imager, impostando già lì Wi-Fi (solo 2,4 GHz), utente e SSH.
 - L'adattatore compare come `/dev/ttyUSB0`. Il percorso stabile si trova con
   `ls -l /dev/serial/by-id/`.
 
