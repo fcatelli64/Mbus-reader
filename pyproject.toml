@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mbus-reader"
+version = "0.1.0"
+description = "Lettore M-Bus (Engelmann SensoStar 2 e altri) con pubblicazione MQTT per Home Assistant"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["pyserial>=3.5", "paho-mqtt>=2.0", "PyYAML>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pyMeterBus"]
+
+[project.scripts]
+mbus-reader = "mbus_reader.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

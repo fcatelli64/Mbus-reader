@@ -1,0 +1,25 @@
+# Copia questo file in config.yaml e adattalo.
+
+serial:
+  # Meglio il percorso stabile: ls -l /dev/serial/by-id/
+  port: /dev/ttyUSB0
+  baudrate: 2400        # il SensoStar 2 esce di fabbrica a 2400 baud (8E1)
+  timeout: 3
+  retries: 3
+
+meter:
+  name: Contabilizzatore calore
+  # 254 = "chiunque sia sul bus, rispondi": va bene con un solo contatore.
+  primary_address: 254
+  # Con più contatori sullo stesso bus usa invece il numero di serie
+  # stampato sul frontale (indirizzo secondario):
+  # secondary_address: "61382914"
+  poll_interval: 900    # secondi tra una lettura e l'altra (vedi README: batteria!)
+
+mqtt:
+  host: homeassistant.local   # IP o nome dell'istanza Home Assistant (broker Mosquitto)
+  port: 1883
+  username: mbus
+  password: cambiami          # oppure variabile d'ambiente MQTT_PASSWORD
+  base_topic: mbus
+  discovery_prefix: homeassistant
