@@ -7,14 +7,18 @@ serial:
   timeout: 3
   retries: 3
 
-meter:
-  name: Contabilizzatore calore
-  # 254 = "chiunque sia sul bus, rispondi": va bene con un solo contatore.
-  primary_address: 254
-  # Con più contatori sullo stesso bus usa invece il numero di serie
-  # stampato sul frontale (indirizzo secondario):
-  # secondary_address: "61382914"
-  poll_interval: 900    # secondi tra una lettura e l'altra (vedi README: batteria!)
+# Secondi tra un giro di letture e il successivo (vedi README: batteria!)
+poll_interval: 900
+
+# Un blocco per ogni contabilizzatore sul bus. Il nome diventa il nome del
+# dispositivo in Home Assistant e determina gli entity_id: sceglilo subito
+# e non cambiarlo più (es. "Calore Interno 1" -> sensor.calore_interno_1_energia).
+# secondary_address = numero di serie stampato sul frontale del contatore.
+meters:
+  - name: Calore Interno 1
+    secondary_address: "61382914"
+  # - name: Calore Interno 2
+  #   secondary_address: "........"
 
 mqtt:
   host: homeassistant.local   # IP o nome dell'istanza Home Assistant (broker Mosquitto)

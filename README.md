@@ -57,8 +57,8 @@ Deve comparire la tabella dei valori. Se va in timeout:
 - `mbus-reader -c … -v read` mostra i byte trasmessi e ricevuti;
 - `mbus-reader -c … scan` cerca il contatore sugli indirizzi 0–250;
 - prova `baudrate: 300` o `9600`;
-- prova l'indirizzo secondario (`secondary_address: "61382914"`, il numero
-  stampato sul frontale);
+- con un solo contatore collegato, togli `secondary_address` dalla
+  configurazione: viene usato l'indirizzo 254, a cui risponde qualsiasi contatore;
 - controlla che l'adattatore sia un *master* M-Bus (deve fornire circa 30 V sul bus).
 
 La riga `RAW:` è il telegramma grezzo: conservala, serve per ogni diagnosi
@@ -75,6 +75,38 @@ sudo systemctl enable --now mbus-reader
 journalctl -u mbus-reader -f
 ```
 
+## Più contatori
+
+I contatori si collegano tutti in parallelo sugli stessi due fili del bus.
+Non serve riprogrammarli: ognuno viene interrogato con il proprio numero di
+serie (indirizzo secondario), stampato sul frontale. Basta aggiungere un blocco
+per contatore sotto `meters:` e riavviare il servizio.
+
+Verifica che l'adattatore USB/M-Bus sia dichiarato per almeno 6 dispositivi
+(ogni contatore assorbe circa 1,5 mA dal bus).
+
+## Preparare Home Assistant senza contatori
+
+Su qualsiasi PC con Python (non serve il Raspberry né l'adattatore):
+
+```bash
+pip install .
+mbus-reader -c config.yaml simulate      # pubblica dati finti ogni 60 s; Ctrl+C per fermare
+mbus-reader -c config.yaml dashboard > dashboard.yaml
+```
+
+- `simulate` crea in Home Assistant gli stessi dispositivi ed entità che
+  creeranno le letture vere (stessi identificativi, basati sul numero di
+  serie), con temperature, portata e potenza inventate. **Energia e volume
+  restano "sconosciuto"** di proposito: valori finti sporcherebbero le
+  statistiche dei consumi.
+- `dashboard` stampa una vista con una sezione per contatore più il confronto.
+  In Home Assistant: nuova dashboard → *Modifica* → ⋮ → *Editor di
+  configurazione testuale* → incolla il contenuto.
+
+Quando arrivano i contatori veri non c'è nulla da rifare: le entità sono le
+stesse e iniziano a ricevere i dati reali.
+
 ## Note
 
 - **Batteria**: il SensoStar 2 è alimentato a batteria e ogni lettura M-Bus ne
@@ -85,8 +117,8 @@ journalctl -u mbus-reader -f
   utilizzabile nelle statistiche di Home Assistant.
 - I valori storici (data di riferimento, mesi precedenti) e i dati di servizio
   sono creati come entità *diagnostiche*.
-- Con un solo contatore sul bus l'indirizzo `254` funziona sempre; con più
-  contatori usa `secondary_address`.
+- Se il servizio si ferma o un contatore non risponde per 3 letture di fila,
+  le sue entità diventano "non disponibile".
 
 ## Sviluppo
 

@@ -22,7 +22,6 @@ class MeterConfig:
     name: str = "Contabilizzatore calore"
     primary_address: int = 254
     secondary_address: str | None = None
-    poll_interval: int = 900  # secondi
 
 
 @dataclass
@@ -39,8 +38,9 @@ class MqttConfig:
 @dataclass
 class Config:
     serial: SerialConfig = field(default_factory=SerialConfig)
-    meter: MeterConfig = field(default_factory=MeterConfig)
+    meters: list[MeterConfig] = field(default_factory=lambda: [MeterConfig()])
     mqtt: MqttConfig = field(default_factory=MqttConfig)
+    poll_interval: int = 900  # secondi tra un giro di letture e il successivo
 
 
 def _build(cls, data: dict | None):
@@ -55,16 +55,24 @@ def load_config(path: str | Path | None) -> Config:
     raw: dict = {}
     if path:
         raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    unknown = set(raw) - {"serial", "meter", "mqtt"}
+    unknown = set(raw) - {"serial", "meters", "mqtt", "poll_interval"}
     if unknown:
         raise ValueError(f"sezioni sconosciute nella configurazione: {sorted(unknown)}")
+    meters = [_build(MeterConfig, m) for m in raw.get("meters") or [{}]]
+    for m in meters:
+        if m.secondary_address is not None:
+            m.secondary_address = str(m.secondary_address).rjust(8, "0")
+    if len(meters) > 1:
+        if any(not m.secondary_address for m in meters):
+            raise ValueError("con più contatori ognuno deve avere 'secondary_address'")
+        if len({m.name for m in meters}) != len(meters):
+            raise ValueError("i contatori devono avere nomi diversi")
     cfg = Config(
         serial=_build(SerialConfig, raw.get("serial")),
-        meter=_build(MeterConfig, raw.get("meter")),
+        meters=meters,
         mqtt=_build(MqttConfig, raw.get("mqtt")),
+        poll_interval=int(raw.get("poll_interval", 900)),
     )
-    if cfg.meter.secondary_address is not None:
-        cfg.meter.secondary_address = str(cfg.meter.secondary_address)
     # la password può arrivare dall'ambiente, per non scriverla nel file
     cfg.mqtt.password = os.environ.get("MQTT_PASSWORD", cfg.mqtt.password)
     return cfg

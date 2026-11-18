@@ -30,7 +30,7 @@ def _print_telegram(t: Telegram) -> None:
 
 def _output(telegrams: list[Telegram], args) -> None:
     if args.json:
-        merged: dict = {}
+        merged: dict = {"meter_id": telegrams[0].meter_id}
         for t in telegrams:
             merged.update(t.as_dict())
         print(json.dumps(merged, indent=2, ensure_ascii=False))
@@ -62,6 +62,12 @@ def main(argv: list[str] | None = None) -> int:
     run_p = sub.add_parser("run", help="lettura periodica e pubblicazione MQTT")
     run_p.add_argument("--once", action="store_true", help="una sola lettura, poi esce")
 
+    sim = sub.add_parser("simulate", help="pubblica dati finti su MQTT (senza contatori)")
+    sim.add_argument("--once", action="store_true", help="una sola pubblicazione, poi esce")
+    sim.add_argument("--interval", type=int, default=60, help="secondi tra gli invii (60)")
+
+    sub.add_parser("dashboard", help="stampa la dashboard YAML per Home Assistant")
+
     args = p.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -85,6 +91,18 @@ def main(argv: list[str] | None = None) -> int:
 
             run(cfg, once=args.once)
             return 0
+        if args.command == "simulate":
+            from .ha import run, simulate_all
+
+            run(cfg, once=args.once, source=simulate_all, interval=args.interval)
+            return 0
+        if args.command == "dashboard":
+            import yaml
+
+            from .ha import dashboard
+
+            print(yaml.safe_dump(dashboard(cfg), allow_unicode=True, sort_keys=False), end="")
+            return 0
 
         with MBusClient(cfg.serial.port, cfg.serial.baudrate, cfg.serial.timeout,
                         cfg.serial.retries) as bus:
@@ -98,7 +116,16 @@ def main(argv: list[str] | None = None) -> int:
                     print("  nessun contatore trovato: controlla cablaggio e baudrate "
                           "(prova 300 o 9600)")
                 return 0 if found else 1
-            _output(bus.read(cfg.meter.primary_address, cfg.meter.secondary_address), args)
+            failed = 0
+            for meter in cfg.meters:
+                print(f"== {meter.name} ==")
+                try:
+                    _output(bus.read(meter.primary_address, meter.secondary_address), args)
+                except (MBusError, DecodeError) as exc:
+                    failed += 1
+                    print(f"errore: {exc}", file=sys.stderr)
+            if failed:
+                return 1
         return 0
     except (MBusError, DecodeError, OSError, ValueError) as exc:
         print(f"errore: {exc}", file=sys.stderr)

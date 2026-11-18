@@ -110,7 +110,7 @@ class Record:
 
     @property
     def state_class(self) -> str | None:
-        if self.function != "inst" or self.storage or not isinstance(self.value, (int, float)):
+        if self.function != "inst" or self.storage or isinstance(self.value, (str, date)):
             return None
         return QUANTITIES.get(self.quantity, QUANTITIES["unknown"])[2]
 

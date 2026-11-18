@@ -4,9 +4,9 @@ import pytest
 
 from mbus_reader import frames
 from mbus_reader.client import MBusClient, MBusTimeout
-from mbus_reader.config import Config
+from mbus_reader.config import Config, MeterConfig, load_config
 from mbus_reader.decoder import decode_records, decode_telegram
-from mbus_reader.ha import discovery_messages, merge_state
+from mbus_reader.ha import dashboard, discovery_messages, merge_state, simulate_all
 
 # Esempio ufficiale della documentazione M-Bus (cap. 6.6)
 DOC_EXAMPLE = bytes.fromhex(
@@ -166,15 +166,49 @@ def test_client_secondary_and_timeout():
 
 def test_discovery():
     t = decode_telegram(frames.next_frame(heat_meter_frame())[0])
-    msgs = discovery_messages(Config(), [t])
+    msgs = discovery_messages(Config(), MeterConfig(name="Calore 1"), [t])
     energy = msgs["homeassistant/sensor/mbus_61382914/energy/config"]
     assert energy["device_class"] == "energy"
     assert energy["state_class"] == "total_increasing"
     assert energy["unit_of_measurement"] == "kWh"
     assert energy["state_topic"] == "mbus/61382914/state"
+    assert energy["device"]["name"] == "Calore 1"
+    assert [a["topic"] for a in energy["availability"]] == [
+        "mbus/bridge/availability", "mbus/61382914/availability"]
     hist = msgs["homeassistant/sensor/mbus_61382914/energy_s1/config"]
     assert "state_class" not in hist and hist["entity_category"] == "diagnostic"
     assert msgs["homeassistant/sensor/mbus_61382914/date_s1/config"]["device_class"] == "date"
     assert "device_class" not in msgs["homeassistant/sensor/mbus_61382914/temperature_difference/config"]
     assert "homeassistant/binary_sensor/mbus_61382914/battery_low/config" in msgs
     assert set(merge_state([t])) >= {m["unique_id"].removeprefix("mbus_61382914_") for m in msgs.values()}
+
+
+def test_multi_meter_config_simulation_dashboard(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        "poll_interval: 600\n"
+        "meters:\n"
+        "  - {name: Calore Interno 1, secondary_address: 61382914}\n"
+        "  - {name: Calore Unità 2, secondary_address: '61382915'}\n", encoding="utf-8")
+    cfg = load_config(path)
+    assert cfg.poll_interval == 600
+    assert [m.secondary_address for m in cfg.meters] == ["61382914", "61382915"]
+
+    results = list(simulate_all(cfg))
+    assert [t[0].meter_id for _, t in results] == ["61382914", "61382915"]
+    state = merge_state(results[0][1])
+    assert state["energy"] is None and 50 < state["flow_temperature"] < 70
+    # la simulazione crea le stesse entità (stessi unique_id e classi) dei dati veri
+    sim = discovery_messages(cfg, cfg.meters[0], results[0][1])
+    real = discovery_messages(
+        cfg, cfg.meters[0], [decode_telegram(frames.next_frame(heat_meter_frame())[0])])
+    for topic, payload in sim.items():
+        assert payload == real[topic], topic
+
+    yaml_text = str(dashboard(cfg))
+    assert "sensor.calore_interno_1_energia" in yaml_text
+    assert "sensor.calore_unita_2_temperatura_mandata" in yaml_text
+
+    path.write_text("meters:\n  - {name: A}\n  - {name: B}\n")
+    with pytest.raises(ValueError):
+        load_config(path)
