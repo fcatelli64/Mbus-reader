@@ -48,7 +48,8 @@ Installazione completata. Ora:
   3. sudo systemctl start mbus-reader
 MSG
 else
-    systemctl restart mbus-reader
+    systemctl try-restart mbus-reader   # riavvia solo se era già in esecuzione
     echo
-    echo "Aggiornamento completato, servizio riavviato (config esistente mantenuta)."
+    echo "Aggiornamento completato (config esistente mantenuta)."
+    echo "Stato del servizio: $(systemctl is-active mbus-reader || true)"
 fi

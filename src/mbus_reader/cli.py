@@ -94,6 +94,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "simulate":
             from .ha import run, simulate_all
 
+            # nome diverso dal servizio vero: due client con lo stesso id si
+            # scollegano a vicenda in continuazione
+            cfg.mqtt.client_id += "-sim"
             run(cfg, once=args.once, source=simulate_all, interval=args.interval)
             return 0
         if args.command == "dashboard":
