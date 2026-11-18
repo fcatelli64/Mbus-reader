@@ -127,6 +127,9 @@ def main(argv: list[str] | None = None) -> int:
             if failed:
                 return 1
         return 0
+    except KeyboardInterrupt:
+        print("\ninterrotto")
+        return 130
     except (MBusError, DecodeError, OSError, ValueError) as exc:
         print(f"errore: {exc}", file=sys.stderr)
         return 1
