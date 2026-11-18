@@ -32,24 +32,21 @@ un'entità per ogni valore.
 ## 3. Installazione sul Raspberry
 
 ```bash
-sudo apt update && sudo apt install -y git python3-venv
-sudo useradd --system --groups dialout --home /opt/mbus-reader mbus
-sudo git clone https://github.com/fcatelli64/Mbus-reader.git /opt/mbus-reader
-cd /opt/mbus-reader
-sudo python3 -m venv .venv
-sudo .venv/bin/pip install .
-
-sudo mkdir /etc/mbus-reader
-sudo cp config.example.yaml /etc/mbus-reader/config.yaml
-sudo nano /etc/mbus-reader/config.yaml      # porta seriale e dati MQTT
-sudo chown mbus /etc/mbus-reader/config.yaml && sudo chmod 600 /etc/mbus-reader/config.yaml
+sudo apt update && sudo apt install -y git
+git clone https://github.com/fcatelli64/Mbus-reader.git
+cd Mbus-reader
+sudo ./install.sh
+sudo nano /etc/mbus-reader/config.yaml      # dati MQTT e contatori
 ```
+
+Lo script installa il programma in `/opt/mbus-reader`, crea l'utente di
+servizio `mbus`, la configurazione e il servizio systemd (non ancora avviato).
+Per aggiornare in futuro: `git pull && sudo ./install.sh`.
 
 ## 4. Prima prova
 
 ```bash
-cd /opt/mbus-reader
-sudo -u mbus .venv/bin/mbus-reader -c /etc/mbus-reader/config.yaml read --raw
+sudo -u mbus mbus-reader -c /etc/mbus-reader/config.yaml read --raw
 ```
 
 Deve comparire la tabella dei valori. Se va in timeout:
@@ -70,8 +67,7 @@ Assistant il dispositivo compare sotto *Impostazioni → Dispositivi e servizi �
 ## 5. Servizio
 
 ```bash
-sudo cp systemd/mbus-reader.service /etc/systemd/system/
-sudo systemctl enable --now mbus-reader
+sudo systemctl start mbus-reader
 journalctl -u mbus-reader -f
 ```
 
