@@ -28,6 +28,10 @@ _DIAGNOSTIC = {
     "battery_remaining", "manufacturer_specific", "unknown",
 }
 
+# decimali mostrati in Home Assistant (altrimenti la portata diventa "0 m³/h")
+_PRECISION = {"volume_flow": 3, "volume": 3, "energy": 1, "flow_temperature": 1,
+              "return_temperature": 1, "temperature_difference": 1}
+
 _BINARY = (
     ("battery_low", "Batteria scarica", "battery"),
     ("permanent_error", "Errore permanente", "problem"),
@@ -89,6 +93,8 @@ def discovery_messages(cfg: Config, meter: MeterConfig, telegrams: list[Telegram
                 payload["device_class"] = r.device_class
             if r.state_class:
                 payload["state_class"] = r.state_class
+            if r.quantity in _PRECISION and r.unit:
+                payload["suggested_display_precision"] = _PRECISION[r.quantity]
             if r.storage or r.quantity in _DIAGNOSTIC:
                 payload["entity_category"] = "diagnostic"
             out[f"{cfg.mqtt.discovery_prefix}/sensor/{uid}/{r.key}/config"] = payload

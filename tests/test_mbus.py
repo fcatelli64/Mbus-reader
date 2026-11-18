@@ -173,6 +173,8 @@ def test_discovery():
     assert energy["unit_of_measurement"] == "kWh"
     assert energy["state_topic"] == "mbus/61382914/state"
     assert energy["device"]["name"] == "Calore 1"
+    assert msgs["homeassistant/sensor/mbus_61382914/volume_flow/config"][
+        "suggested_display_precision"] == 3
     assert [a["topic"] for a in energy["availability"]] == [
         "mbus/bridge/availability", "mbus/61382914/availability"]
     hist = msgs["homeassistant/sensor/mbus_61382914/energy_s1/config"]
