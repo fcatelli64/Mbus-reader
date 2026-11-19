@@ -319,3 +319,21 @@ def dashboard(cfg: Config) -> dict:
         sections.insert(0, summary)
     return {"views": [{"title": "Calore", "path": "calore", "icon": "mdi:radiator",
                        "type": "sections", "max_columns": 3, "sections": sections}]}
+
+
+def panel_config(cfg: Config) -> dict:
+    """Blocco ``panel_custom`` per configuration.yaml (pannello per smartphone)."""
+    return {"panel_custom": [{
+        "name": "calore-panel",
+        "sidebar_title": "Calore",
+        "sidebar_icon": "mdi:radiator",
+        "url_path": "calore",
+        "module_url": "/local/calore-panel.js?v=1",
+        "config": {
+            "title": "Home",
+            "group_title": "Condomini",
+            # name = testo mostrato (modificabile); id = prefisso delle entità (non toccare)
+            "meters": [{"name": m.name.replace("_", " "), "id": slugify(m.name)}
+                       for m in cfg.meters],
+        },
+    }]}

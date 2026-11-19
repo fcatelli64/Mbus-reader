@@ -103,6 +103,34 @@ mbus-reader -c config.yaml dashboard > dashboard.yaml
 Quando arrivano i contatori veri non c'è nulla da rifare: le entità sono le
 stesse e iniziano a ricevere i dati reali.
 
+## Pannello per smartphone
+
+`homeassistant/calore-panel.js` è un pannello autonomo per Home Assistant: una
+pagina principale con la potenza totale e un riquadro per contabilizzatore, più
+una pagina di dettaglio per ciascuno (valori istantanei, energia, potenza delle
+ultime 24 ore, consumi degli ultimi 6 mesi). Non ha barra superiore e non
+richiede HACS né altre integrazioni.
+
+1. Copia `calore-panel.js` nella cartella `www` della configurazione di Home
+   Assistant (`/config/www/`; se la cartella non esiste, creala).
+2. Genera la configurazione con `mbus-reader -c /etc/mbus-reader/config.yaml panel`
+   e incollala in fondo a `configuration.yaml`. In `name` puoi cambiare il testo
+   mostrato (es. "Di Pietro"); `id` deve restare com'è.
+3. Riavvia Home Assistant: nella barra laterale compare "Calore".
+
+Opzioni utili in `config:`:
+
+- `weather: weather.nome_entita` per scegliere l'entità meteo (di default la prima disponibile);
+- per contatore, `entities: {cooling: sensor.xxx}` per indicare l'entità
+  dell'energia di raffrescamento (compaiono il secondo contatore e le barre blu);
+  con le altre chiavi (`energy`, `power`, `flow`, `t_in`, `t_out`) si può
+  sostituire qualsiasi entità.
+
+Aprendo `/calore?demo` il pannello mostra dati di esempio. Dopo aver aggiornato
+il file, aumenta il numero in `?v=1` e riavvia, altrimenti il browser usa la
+copia vecchia. Su smartphone la barra laterale è già nascosta; su PC si può
+nascondere dal profilo utente ("Nascondi sempre la barra laterale").
+
 ## Note
 
 - **Batteria**: il SensoStar 2 è alimentato a batteria e ogni lettura M-Bus ne

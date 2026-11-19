@@ -67,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     sim.add_argument("--interval", type=int, default=60, help="secondi tra gli invii (60)")
 
     sub.add_parser("dashboard", help="stampa la dashboard YAML per Home Assistant")
+    sub.add_parser("panel", help="stampa la configurazione del pannello per smartphone")
 
     args = p.parse_args(argv)
     logging.basicConfig(
@@ -98,6 +99,13 @@ def main(argv: list[str] | None = None) -> int:
             # scollegano a vicenda in continuazione
             cfg.mqtt.client_id += "-sim"
             run(cfg, once=args.once, source=simulate_all, interval=args.interval)
+            return 0
+        if args.command == "panel":
+            import yaml
+
+            from .ha import panel_config
+
+            print(yaml.safe_dump(panel_config(cfg), allow_unicode=True, sort_keys=False), end="")
             return 0
         if args.command == "dashboard":
             import yaml
