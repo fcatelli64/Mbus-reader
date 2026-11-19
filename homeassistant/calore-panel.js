@@ -58,15 +58,15 @@ const STYLE = `
   background:linear-gradient(180deg,#dcefff 0%,#eaf5ff 45%,#dbeeff 100%);
   color:#0f1b3d;font-family:Roboto,"Segoe UI",system-ui,sans-serif;
   -webkit-tap-highlight-color:transparent;
-  padding:calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 18px)}
+  padding:calc(env(safe-area-inset-top) + 4px) 12px calc(env(safe-area-inset-bottom) + 12px)}
 *{box-sizing:border-box}
-#root{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+#root{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .card{background:#fff;border-radius:20px;padding:16px 18px;box-shadow:0 2px 10px rgba(40,90,150,.10)}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .ic{width:26px;height:26px;flex:none}
 h1{font-size:26px;margin:0;font-weight:800;display:flex;align-items:center;gap:10px}
 h1 .ic{width:34px;height:34px;color:#3d6f9e}
-h2{font-size:24px;margin:8px 4px 0;font-weight:800}
+h2{font-size:21px;margin:4px 4px -2px;font-weight:800}
 .muted{color:#55617a}
 .center{text-align:center}
 .date{font-size:15px;font-weight:500}
@@ -79,16 +79,17 @@ h2{font-size:24px;margin:8px 4px 0;font-weight:800}
 .label{font-size:19px;font-weight:700}
 .status{display:flex;align-items:center;gap:8px;font-weight:700;font-size:17px}
 .heat{color:#f97316}.cool{color:#2b8cf0}.idle{color:#7a869c}
-.tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 10px 14px;
-  cursor:pointer;border:0;font:inherit;color:inherit;width:100%}
-.tile:active{transform:scale(.97)}
-.tile .ic.b{width:52px;height:52px;color:#3d5f80}
-.tile{position:relative}
-.tile .n{font-size:21px;font-weight:800;text-align:center;padding:0 16px;line-height:1.15}
-.tile>.ic.go{position:absolute;right:10px;top:50%;margin-top:-10px;width:20px;height:20px;color:#3d6f9e}
-.tile.off{background:rgba(255,255,255,.35);border:2px dashed #a9b7c9;box-shadow:none;color:#7b8798;cursor:default}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.tile{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:3px;
+  padding:10px 3px 8px;border-radius:14px;cursor:pointer;border:0;font:inherit;color:inherit;
+  width:100%;min-width:0}
+.tile:active{transform:scale(.96)}
+.tile .ic.b{width:28px;height:28px;color:#3d5f80}
+.tile .n{font-size:13px;font-weight:800;text-align:center;line-height:1.15;
+  overflow-wrap:anywhere;min-height:30px;display:flex;align-items:center}
+.tile.off{background:rgba(255,255,255,.35);border:1.5px dashed #a9b7c9;box-shadow:none;color:#7b8798;cursor:default}
 .tile.off .ic.b{color:#7b8798}
-.tile .pw{font-size:13px;color:#55617a}
+.tile .pw{font-size:11.5px;color:#55617a;white-space:nowrap}
 .head{display:flex;align-items:center;gap:12px}
 .head button{background:none;border:0;padding:6px;color:inherit;cursor:pointer;display:flex}
 .head .ic{width:30px;height:30px}
@@ -115,7 +116,7 @@ h2{font-size:24px;margin:8px 4px 0;font-weight:800}
 .legend{display:flex;justify-content:center;gap:22px;font-size:13px;margin-top:4px}
 .legend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:6px}
 .empty{padding:26px 0;text-align:center;color:#7a869c;font-size:14px}
-.homebtn{background:#2f4a6b;color:#fff;border:0;border-radius:16px;padding:16px;font:inherit;
+.homebtn{position:sticky;bottom:calc(env(safe-area-inset-bottom) + 8px);z-index:2;box-shadow:0 4px 14px rgba(20,45,80,.35);background:#2f4a6b;color:#fff;border:0;border-radius:16px;padding:13px;font:inherit;
   font-size:20px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer}
 .foot{text-align:center;font-size:13px;color:#55617a}
 @media(max-width:360px){.clock{font-size:38px}.big{font-size:44px}.metric .v,.energy .v{font-size:19px}}
@@ -364,10 +365,10 @@ class CalorePanel extends HTMLElement {
     const tiles = this._meters.map((m) => {
       const p = this._num(m, "power");
       return `<button class="card tile" data-go="${esc(m.id)}">${icon("building", "b")}
-        <div class="n">${esc(m.name)}</div>${icon("chevron", "go")}
-        <div class="pw">${this._online(m) ? (p == null ? "—" : `${fmt(Math.abs(p), 1)} kW`) : "non disponibile"}</div></button>`;
+        <div class="n">${esc(m.name)}</div>
+        <div class="pw">${this._online(m) ? (p == null ? "—" : `${fmt(Math.abs(p), 1)} kW`) : "n.d."}</div></button>`;
     });
-    if (tiles.length % 2) tiles.push(`<div class="card tile off">${icon("lock", "b")}<div class="n">Non attivo</div><div class="pw">&nbsp;</div></div>`);
+    while (tiles.length % 4) tiles.push(`<div class="card tile off">${icon("lock", "b")}<div class="n">Non attivo</div><div class="pw">&nbsp;</div></div>`);
     return `<h1>${icon("home")}${esc(cfg.title || "Home")}</h1>
       <div class="${weather ? "row" : ""}">
         <div class="card center"><div class="date">${date}</div><div class="clock">${time}</div></div>${weather}
@@ -377,7 +378,7 @@ class CalorePanel extends HTMLElement {
         <div class="status ${mode}">${icon(mode === "cool" ? "snow" : "heat")}${label}</div>
         <div class="muted" style="margin-top:6px">Somma dei ${this._meters.length} contabilizzatori</div></div>
       <h2>${esc(cfg.group_title || "Condomini")}</h2>
-      <div class="row">${tiles.join("")}</div>
+      <div class="tiles">${tiles.join("")}</div>
       <div class="foot">Aggiornato alle ${time}${this._demo ? " · Dati di esempio" : ""}</div>`;
   }
 
