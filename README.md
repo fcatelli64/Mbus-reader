@@ -125,6 +125,15 @@ Opzioni utili in `config:`:
   dell'energia di raffrescamento (compaiono il secondo contatore e le barre blu);
   con le altre chiavi (`energy`, `power`, `flow`, `t_in`, `t_out`) si può
   sostituire qualsiasi entità.
+- per contatore, `entities: {water_hot: sensor.xxx, water_cold: sensor.yyy}` per
+  i volumi dei due ingressi impulsi (acqua calda e fredda dell'appartamento);
+  di default `sensor.<id>_acqua_calda` e `sensor.<id>_acqua_fredda`;
+- per contatore, `water_offset: {hot: 12.34, cold: 56.78}` (m³) per allineare la
+  lettura mostrata al rullo del contatore meccanico.
+
+La pagina principale mostra la potenza totale, l'energia e l'acqua del mese in
+corso; il pulsante *Annuale* apre i grafici mese per mese (riscaldamento,
+raffrescamento, acqua) sommati su tutti i contabilizzatori.
 
 Aprendo `/calore?demo` il pannello mostra dati di esempio. Dopo aver aggiornato
 il file, aumenta il numero in `?v=1` e riavvia, altrimenti il browser usa la
