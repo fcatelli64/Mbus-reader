@@ -273,7 +273,10 @@ def run(cfg: Config, once: bool = False, source: Callable[[Config], Iterator] = 
                 return
             time.sleep(max(5.0, interval - (time.monotonic() - started)))
     finally:
-        if client.is_connected():  # arresto pulito: il "last will" non scatterebbe
+        # Arresto pulito del servizio continuo: il "last will" non scatterebbe.
+        # Dopo una lettura singola (--once) i valori devono invece restare
+        # visibili in Home Assistant.
+        if client.is_connected() and not once:
             client.publish(bridge_topic(cfg), "offline", qos=1, retain=True).wait_for_publish(5)
         client.loop_stop()
         client.disconnect()
