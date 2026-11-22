@@ -233,4 +233,4 @@ def test_probe_optical_finds_reply():
     fake.parity = "E"
     with MBusClient("x", serial_factory=lambda: fake) as bus:
         label, data, frame = next(bus.probe_optical(listen=0.05))
-    assert "8N1" in label and frame.kind == "long" and data == heat_meter_frame()
+    assert "senza risveglio" in label and frame.kind == "long" and data == heat_meter_frame()

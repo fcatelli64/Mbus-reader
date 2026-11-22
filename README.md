@@ -132,9 +132,12 @@ sudo reboot
 L'ultima riga spegne il Bluetooth del Pi 3: è necessario, perché la porta
 seriale che resta libera altrimenti non supporta la parità richiesta da M-Bus.
 
-Nella configurazione: `port: /dev/serial0` e `wakeup: 2.5`. Poi premi il
-tasto del contatore per attivare l'interfaccia ottica, appoggia la testina
-sulla finestrella e lancia subito `mbus-reader -c … -v read --raw`.
+Nella configurazione: `port: /dev/serial0`. Secondo il manuale del SensoStar
+2/2+ l'interfaccia ottica si attiva premendo il tasto del contatore e resta
+aperta 60 secondi: premi il tasto, appoggia la testina sulla finestrella e
+lancia subito `mbus-reader -c … probe`, che prova prima la richiesta diretta e
+poi varie sequenze di risveglio (`wakeup:` serve solo se una di queste risulta
+necessaria). Non ancora verificato su un contatore reale.
 
 ## Pannello per smartphone
 

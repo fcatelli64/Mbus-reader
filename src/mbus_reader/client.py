@@ -195,10 +195,12 @@ class MBusClient:
             ("REQ_UD2", frames.req_ud2(frames.ADDR_BROADCAST_REPLY)),
             ("SND_NKE", frames.snd_nke(frames.ADDR_BROADCAST_REPLY)),
         )
-        variants = [(mode, pause, name, req)
-                    for mode in ("N", "E") for pause in (0.03, 0.1, 0.35)
-                    for name, req in requests]
-        variants += [(None, 0.0, name, req) for name, req in requests]
+        # Prima le richieste dirette: sul SensoStar 2 l'interfaccia si attiva con
+        # il tasto e resta aperta 60 secondi, quindi vanno provate subito.
+        variants = [(None, 0.0, name, req) for name, req in requests]
+        variants += [(mode, pause, name, req)
+                     for mode in ("N", "E") for pause in (0.03, 0.1, 0.35)
+                     for name, req in requests]
         for mode, pause, name, req in variants:
             if mode:
                 count = int(self.baudrate / (10 if mode == "N" else 11) * 2.2)
