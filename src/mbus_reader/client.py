@@ -112,12 +112,18 @@ class MBusClient:
         """
         if self.wakeup <= 0 or self._ser is None:
             return
-        count = max(1, int(self.baudrate / 11 * self.wakeup))  # 11 bit per byte in 8E1
+        # Raffica in 8N1 (segnale perfettamente alternato), poi si torna a 8E1 e
+        # si invia la richiesta entro pochi millisecondi, come sugli altri
+        # contatori di calore con interfaccia ottica.
+        count = max(1, int(self.baudrate / 10 * self.wakeup))  # 10 bit per byte in 8N1
         log.debug("TX risveglio: %d x 0x55", count)
-        self._ser.write(b"\x55" * count)
-        self._ser.flush()
-        time.sleep(0.15)
-        self._ser.reset_input_buffer()
+        ser = self._ser
+        ser.parity = "N"
+        ser.write(b"\x55" * count)
+        ser.flush()
+        ser.parity = "E"
+        time.sleep(0.05)
+        ser.reset_input_buffer()
 
     # -- operazioni ----------------------------------------------------------
     def ping(self, address: int, timeout: float | None = None) -> bool:
