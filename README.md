@@ -132,12 +132,14 @@ sudo reboot
 L'ultima riga spegne il Bluetooth del Pi 3: è necessario, perché la porta
 seriale che resta libera altrimenti non supporta la parità richiesta da M-Bus.
 
-Nella configurazione: `port: /dev/serial0`. Secondo il manuale del SensoStar
-2/2+ l'interfaccia ottica si attiva premendo il tasto del contatore e resta
-aperta 60 secondi: premi il tasto, appoggia la testina sulla finestrella e
-lancia subito `mbus-reader -c … probe`, che prova prima la richiesta diretta e
-poi varie sequenze di risveglio (`wakeup:` serve solo se una di queste risulta
-necessaria). Non ancora verificato su un contatore reale.
+Nella configurazione: `port: /dev/serial0`, senza `wakeup`. Dal manuale del
+SensoStar 2/2+: l'interfaccia ottica lavora a 2400 baud, si attiva premendo il
+tasto del contatore e si disattiva dopo 60 secondi senza un telegramma valido;
+è alimentata dalla batteria, quindi il numero di letture è limitato. Premi il
+tasto, appoggia la testina sulla finestrella e lancia subito
+`mbus-reader -c … -v read --raw` (oppure `probe`, che prova anche alcune
+sequenze di risveglio usate da altri modelli). Non ancora verificato su un
+contatore reale.
 
 ## Pannello per smartphone
 
@@ -178,10 +180,15 @@ nascondere dal profilo utente ("Nascondi sempre la barra laterale").
 
 ## Note
 
-- **Batteria**: il SensoStar 2 è alimentato a batteria e ogni lettura M-Bus ne
-  consuma un po'; il contatore limita inoltre il numero di letture. Il default
-  è una lettura ogni 15 minuti (`poll_interval: 900`): prima di scendere,
-  verifica sul manuale Engelmann la frequenza di lettura ammessa.
+- **Frequenza di lettura**: secondo il manuale Engelmann, il SensoStar 2 con
+  interfaccia M-Bus senza alimentazione dal bus ammette **24 letture al giorno**
+  per contatore (quelle non usate si accumulano). Per questo il default è una
+  lettura all'ora (`poll_interval: 3600`). Solo la variante "M-Bus VS",
+  alimentata dal bus, non ha limiti.
+- **Cavo del contatore** (versione M-Bus + 2 ingressi impulsi, 6 fili): grigio
+  e rosa sono l'M-Bus; bianco/marrone e giallo/verde sono i due ingressi impulsi.
+- Mentre il contatore comunica via M-Bus, tasto e interfaccia ottica non sono
+  utilizzabili, e viceversa.
 - **Pannello Energia**: l'entità *Energia* (kWh, `total_increasing`) è già
   utilizzabile nelle statistiche di Home Assistant.
 - I valori storici (data di riferimento, mesi precedenti) e i dati di servizio

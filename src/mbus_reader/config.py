@@ -41,7 +41,7 @@ class Config:
     serial: SerialConfig = field(default_factory=SerialConfig)
     meters: list[MeterConfig] = field(default_factory=lambda: [MeterConfig()])
     mqtt: MqttConfig = field(default_factory=MqttConfig)
-    poll_interval: int = 900  # secondi tra un giro di letture e il successivo
+    poll_interval: int = 3600  # secondi tra un giro di letture e il successivo
 
 
 def _build(cls, data: dict | None):
@@ -72,7 +72,7 @@ def load_config(path: str | Path | None) -> Config:
         serial=_build(SerialConfig, raw.get("serial")),
         meters=meters,
         mqtt=_build(MqttConfig, raw.get("mqtt")),
-        poll_interval=int(raw.get("poll_interval", 900)),
+        poll_interval=int(raw.get("poll_interval", 3600)),
     )
     # la password può arrivare dall'ambiente, per non scriverla nel file
     cfg.mqtt.password = os.environ.get("MQTT_PASSWORD", cfg.mqtt.password)
