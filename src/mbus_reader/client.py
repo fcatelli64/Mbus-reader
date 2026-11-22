@@ -96,6 +96,8 @@ class MBusClient:
     def _retry(self, request: bytes, timeout: float | None = None) -> Frame:
         last: Exception | None = None
         for attempt in range(self.retries):
+            if attempt:
+                self.wake()  # l'interfaccia ottica si riaddormenta dopo pochi secondi
             try:
                 return self._exchange(request, timeout)
             except MBusTimeout as exc:
@@ -160,8 +162,11 @@ class MBusClient:
             address = frames.ADDR_SECONDARY
         else:
             address = frames.ADDR_BROADCAST_REPLY if primary is None else primary
-            # normalizza: riporta il contatore al primo telegramma
-            self.ping(address, timeout=1.0)
+            if self.wakeup <= 0:
+                # normalizza: riporta il contatore al primo telegramma
+                self.ping(address, timeout=1.0)
+            # con la testina ottica si va dritti alla richiesta: la finestra di
+            # ascolto dopo il risveglio è breve
 
         telegrams: list[Telegram] = []
         fcb = True

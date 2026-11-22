@@ -225,4 +225,4 @@ def test_optical_wakeup():
         assert bus.read(254)[0].meter_id == "61382914"
     assert fake.sent[0] == b"\x55" * 120  # 2400 baud / 10 bit * 0,5 s
     assert fake.parity == "E"  # dopo il risveglio si torna alla parità pari
-    assert fake.sent[1] == frames.snd_nke(254)
+    assert fake.sent[1] == frames.req_ud2(254, True)  # niente SND_NKE dopo il risveglio
