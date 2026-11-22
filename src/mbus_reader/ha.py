@@ -114,7 +114,8 @@ def discovery_messages(cfg: Config, meter: MeterConfig, telegrams: list[Telegram
 
 def read_all(cfg: Config) -> Iterator[Result]:
     """Legge tutti i contatori configurati; un errore non blocca gli altri."""
-    bus = MBusClient(cfg.serial.port, cfg.serial.baudrate, cfg.serial.timeout, cfg.serial.retries)
+    bus = MBusClient(cfg.serial.port, cfg.serial.baudrate, cfg.serial.timeout,
+                        cfg.serial.retries, wakeup=cfg.serial.wakeup)
     try:
         bus.open()
     except Exception as exc:

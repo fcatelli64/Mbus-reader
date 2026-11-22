@@ -24,11 +24,12 @@ class MBusClient:
     """Uso: ``with MBusClient("/dev/ttyUSB0") as bus: bus.read(254)``."""
 
     def __init__(self, port: str, baudrate: int = 2400, timeout: float = 3.0, retries: int = 3,
-                 serial_factory=None):
+                 serial_factory=None, wakeup: float = 0.0):
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
         self.retries = retries
+        self.wakeup = wakeup
         self._factory = serial_factory
         self._ser = None
 
@@ -103,6 +104,21 @@ class MBusClient:
                 time.sleep(0.5)
         raise last  # type: ignore[misc]
 
+    def wake(self) -> None:
+        """Sveglia l'interfaccia ottica del contatore con una raffica di 0x55.
+
+        Serve solo con una testina ottica (``serial.wakeup`` = durata in secondi):
+        sul bus cablato il contatore è sempre in ascolto.
+        """
+        if self.wakeup <= 0 or self._ser is None:
+            return
+        count = max(1, int(self.baudrate / 11 * self.wakeup))  # 11 bit per byte in 8E1
+        log.debug("TX risveglio: %d x 0x55", count)
+        self._ser.write(b"\x55" * count)
+        self._ser.flush()
+        time.sleep(0.15)
+        self._ser.reset_input_buffer()
+
     # -- operazioni ----------------------------------------------------------
     def ping(self, address: int, timeout: float | None = None) -> bool:
         """SND_NKE: vero se il contatore risponde con ACK."""
@@ -121,6 +137,7 @@ class MBusClient:
     def read(self, primary: int | None = frames.ADDR_BROADCAST_REPLY,
              secondary: str | None = None, max_telegrams: int = 8) -> list[Telegram]:
         """Legge tutti i telegrammi del contatore (REQ_UD2)."""
+        self.wake()
         if secondary:
             self.select(secondary)
             address = frames.ADDR_SECONDARY

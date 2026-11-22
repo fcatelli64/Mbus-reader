@@ -15,6 +15,7 @@ class SerialConfig:
     baudrate: int = 2400
     timeout: float = 3.0
     retries: int = 3
+    wakeup: float = 0.0  # secondi di risveglio (solo testina ottica)
 
 
 @dataclass

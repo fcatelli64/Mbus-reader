@@ -214,3 +214,14 @@ def test_multi_meter_config_simulation_dashboard(tmp_path):
     path.write_text("meters:\n  - {name: A}\n  - {name: B}\n")
     with pytest.raises(ValueError):
         load_config(path)
+
+
+def test_optical_wakeup():
+    fake = FakeSerial({
+        frames.snd_nke(254): b"\xe5",
+        frames.req_ud2(254, True): heat_meter_frame(),
+    }, echo=True)
+    with MBusClient("x", timeout=0.3, retries=1, serial_factory=lambda: fake, wakeup=0.5) as bus:
+        assert bus.read(254)[0].meter_id == "61382914"
+    assert fake.sent[0] == b"\x55" * 109  # 2400 baud / 11 bit * 0,5 s
+    assert fake.sent[1] == frames.snd_nke(254)

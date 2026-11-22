@@ -116,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         with MBusClient(cfg.serial.port, cfg.serial.baudrate, cfg.serial.timeout,
-                        cfg.serial.retries) as bus:
+                        cfg.serial.retries, wakeup=cfg.serial.wakeup) as bus:
             if args.command == "scan":
                 print(f"Scansione su {cfg.serial.port} a {cfg.serial.baudrate} baud "
                       "(circa 2 minuti)...")

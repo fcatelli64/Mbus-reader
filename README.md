@@ -103,6 +103,39 @@ mbus-reader -c config.yaml dashboard > dashboard.yaml
 Quando arrivano i contatori veri non c'è nulla da rifare: le entità sono le
 stesse e iniziano a ricevere i dati reali.
 
+## Lettura con testina ottica
+
+Il SensoStar 2 ha anche un'interfaccia ottica sul frontale (la finestrella
+rotonda), che parla lo stesso protocollo M-Bus. Con una testina IR a 3,3 V
+(IEC 62056-21, uscita seriale TTL) collegata ai pin del Raspberry si può
+leggere il contatore senza cavo M-Bus: utile per le prove, **non** per la
+lettura continua, perché l'interfaccia ottica va attivata a mano e consuma batteria.
+
+Collegamento ai pin del Raspberry Pi 3:
+
+| Testina | Raspberry |
+|---|---|
+| VCC 3,3 V | pin 1 (3V3) — **mai** i pin 2/4 a 5 V |
+| GND | pin 6 |
+| TX (dati dalla testina) | pin 10 (GPIO15, RXD) |
+| RX (dati verso la testina) | pin 8 (GPIO14, TXD) |
+
+Preparazione (una volta sola):
+
+```bash
+sudo raspi-config nonint do_serial_hw 0      # abilita la porta seriale
+sudo raspi-config nonint do_serial_cons 1    # niente console di login sulla seriale
+echo "dtoverlay=disable-bt" | sudo tee -a /boot/firmware/config.txt
+sudo reboot
+```
+
+L'ultima riga spegne il Bluetooth del Pi 3: è necessario, perché la porta
+seriale che resta libera altrimenti non supporta la parità richiesta da M-Bus.
+
+Nella configurazione: `port: /dev/serial0` e `wakeup: 2.5`. Poi premi il
+tasto del contatore per attivare l'interfaccia ottica, appoggia la testina
+sulla finestrella e lancia subito `mbus-reader -c … -v read --raw`.
+
 ## Pannello per smartphone
 
 `homeassistant/calore-panel.js` è un pannello autonomo per Home Assistant: una

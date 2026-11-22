@@ -6,6 +6,9 @@ serial:
   baudrate: 2400        # il SensoStar 2 esce di fabbrica a 2400 baud (8E1)
   timeout: 3
   retries: 3
+  # Solo con testina ottica al posto del cavo M-Bus: secondi di "risveglio"
+  # inviati prima di ogni lettura (vedi README). Con il cavo lascia 0.
+  # wakeup: 2.5
 
 # Secondi tra un giro di letture e il successivo (vedi README: batteria!)
 poll_interval: 900
