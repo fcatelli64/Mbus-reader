@@ -118,10 +118,18 @@ class MBusClient:
         count = max(1, int(self.baudrate / 10 * self.wakeup))  # 10 bit per byte in 8N1
         log.debug("TX risveglio: %d x 0x55", count)
         ser = self._ser
-        ser.parity = "N"
+        try:
+            ser.parity = "N"
+        except Exception:  # porta che non permette il cambio al volo: resta in 8E1
+            log.debug("cambio di parità non supportato, risveglio in 8E1")
         ser.write(b"\x55" * count)
         ser.flush()
-        ser.parity = "E"
+        try:
+            ser.parity = "E"
+        except Exception:
+            self.close()
+            self.open()
+            return
         time.sleep(0.05)
         ser.reset_input_buffer()
 
