@@ -126,9 +126,12 @@ class MBusClient:
         ser.flush()
         try:
             ser.parity = "E"
-        except Exception:
-            self.close()
-            self.open()
+        except Exception as exc:
+            try:
+                self.close()
+                self.open()
+            except Exception:
+                raise MBusError(f"la porta {self.port} non accetta il ritorno a 8E1: {exc}") from exc
             return
         time.sleep(0.05)
         ser.reset_input_buffer()
