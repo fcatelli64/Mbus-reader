@@ -148,7 +148,9 @@ class MBusClient:
 
     def select(self, secondary: str) -> None:
         """Seleziona un contatore tramite indirizzo secondario (numero di serie)."""
-        self.ping(frames.ADDR_SECONDARY, timeout=0.5)  # deseleziona eventuali altri
+        # Niente SND_NKE prima della selezione: sul SensoStar 2 consuma parte delle
+        # letture giornaliere disponibili, e i contatori che non corrispondono
+        # all'indirizzo richiesto si deselezionano comunque da soli.
         reply = self._retry(frames.select_secondary(secondary))
         if reply.kind != "ack":
             raise MBusError(f"selezione di {secondary} non confermata")

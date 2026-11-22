@@ -180,11 +180,15 @@ nascondere dal profilo utente ("Nascondi sempre la barra laterale").
 
 ## Note
 
-- **Frequenza di lettura**: secondo il manuale Engelmann, il SensoStar 2 con
-  interfaccia M-Bus senza alimentazione dal bus ammette **24 letture al giorno**
-  per contatore (quelle non usate si accumulano). Per questo il default è una
-  lettura all'ora (`poll_interval: 3600`). Solo la variante "M-Bus VS",
-  alimentata dal bus, non ha limiti.
+- **Frequenza di lettura**: il manuale del SensoStar 2/2+ (certificato PTB025)
+  limita le letture giornaliere in base al numero di contatori sul bus. Con
+  indirizzo secondario: 275 al giorno con 3 contatori, 170 con 20; con
+  indirizzo primario 655 e 485. Le letture non usate si accumulano. Il default
+  di una lettura ogni 15 minuti (`poll_interval: 900`, 96 al giorno) resta
+  ampiamente entro il limite; sotto i 10 minuti è meglio non scendere.
+- **Interfaccia ottica**: al massimo 300 letture al giorno.
+- **Indirizzo primario** di fabbrica: 0, uguale per tutti i contatori; per
+  questo con più contatori si usa l'indirizzo secondario (numero di serie).
 - **Cavo del contatore** (versione M-Bus + 2 ingressi impulsi, 6 fili): grigio
   e rosa sono l'M-Bus; bianco/marrone e giallo/verde sono i due ingressi impulsi.
 - Mentre il contatore comunica via M-Bus, tasto e interfaccia ottica non sono

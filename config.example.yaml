@@ -10,10 +10,10 @@ serial:
   # inviati prima di ogni lettura (vedi README). Con il cavo lascia 0.
   # wakeup: 2.5
 
-# Secondi tra un giro di letture e il successivo. Il SensoStar 2 con M-Bus
-# senza alimentazione dal bus ammette 24 letture al giorno per contatore:
-# non scendere sotto 3600 (vedi README).
-poll_interval: 3600
+# Secondi tra un giro di letture e il successivo. Il SensoStar 2 limita le
+# letture giornaliere (circa 170-275 per contatore con indirizzo secondario,
+# vedi README): 900 = 96 letture al giorno, ampiamente entro il limite.
+poll_interval: 900
 
 # Un blocco per ogni contabilizzatore sul bus. Il nome diventa il nome del
 # dispositivo in Home Assistant e determina gli entity_id: sceglilo subito
