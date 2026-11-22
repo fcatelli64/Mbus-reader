@@ -226,3 +226,11 @@ def test_optical_wakeup():
     assert fake.sent[0] == b"\x55" * 120  # 2400 baud / 10 bit * 0,5 s
     assert fake.parity == "E"  # dopo il risveglio si torna alla parità pari
     assert fake.sent[1] == frames.req_ud2(254, True)  # niente SND_NKE dopo il risveglio
+
+
+def test_probe_optical_finds_reply():
+    fake = FakeSerial({frames.req_ud2(254): heat_meter_frame()}, echo=True)
+    fake.parity = "E"
+    with MBusClient("x", serial_factory=lambda: fake) as bus:
+        label, data, frame = next(bus.probe_optical(listen=0.05))
+    assert "8N1" in label and frame.kind == "long" and data == heat_meter_frame()

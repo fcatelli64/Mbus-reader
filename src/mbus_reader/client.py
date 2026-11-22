@@ -182,6 +182,60 @@ class MBusClient:
             fcb = not fcb
         return telegrams
 
+    def probe_optical(self, listen: float = 2.5):
+        """Prova varie sequenze di risveglio per l'interfaccia ottica.
+
+        Genera ``(descrizione, byte_ricevuti, frame)`` per ogni variante; ci si
+        può fermare alla prima che ottiene un frame valido.
+        """
+        ser = self._ser
+        if ser is None:
+            raise MBusError("porta non aperta")
+        requests = (
+            ("REQ_UD2", frames.req_ud2(frames.ADDR_BROADCAST_REPLY)),
+            ("SND_NKE", frames.snd_nke(frames.ADDR_BROADCAST_REPLY)),
+        )
+        variants = [(mode, pause, name, req)
+                    for mode in ("N", "E") for pause in (0.03, 0.1, 0.35)
+                    for name, req in requests]
+        variants += [(None, 0.0, name, req) for name, req in requests]
+        for mode, pause, name, req in variants:
+            if mode:
+                count = int(self.baudrate / (10 if mode == "N" else 11) * 2.2)
+                ser.parity = mode
+                ser.write(b"\x55" * count)
+                ser.flush()
+                ser.parity = "E"
+                time.sleep(pause)
+                label = f"risveglio 8{mode}1 2,2 s, pausa {int(pause * 1000)} ms, {name}"
+            else:
+                label = f"senza risveglio, {name}"
+            ser.reset_input_buffer()
+            ser.write(req)
+            ser.flush()
+            buf = bytearray()
+            deadline = time.monotonic() + listen
+            while time.monotonic() < deadline:
+                buf += ser.read(256)
+            data = bytes(buf)
+            if data.startswith(req):  # eco della testina
+                data = data[len(req):]
+            frame, _ = frames.next_frame(data)
+            if frame is not None and frame.kind == "ack" and name == "SND_NKE":
+                # il contatore è sveglio: chiedi subito i dati
+                ser.reset_input_buffer()
+                ser.write(frames.req_ud2(frames.ADDR_BROADCAST_REPLY, True))
+                ser.flush()
+                buf = bytearray()
+                deadline = time.monotonic() + listen
+                while time.monotonic() < deadline:
+                    buf += ser.read(256)
+                data += bytes(buf)
+                long_frame, _ = frames.next_frame(bytes(buf))
+                frame = long_frame or frame
+            yield label, data, frame
+            time.sleep(1.0)
+
     def scan(self, addresses=range(0, 251), timeout: float = 0.4):
         """Scansione degli indirizzi primari; genera quelli che rispondono."""
         for address in addresses:

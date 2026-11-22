@@ -67,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     sim.add_argument("--interval", type=int, default=60, help="secondi tra gli invii (60)")
 
     sub.add_parser("dashboard", help="stampa la dashboard YAML per Home Assistant")
+    sub.add_parser("probe", help="testina ottica: prova varie sequenze di risveglio")
     sub.add_parser("panel", help="stampa la configurazione del pannello per smartphone")
 
     args = p.parse_args(argv)
@@ -117,6 +118,23 @@ def main(argv: list[str] | None = None) -> int:
 
         with MBusClient(cfg.serial.port, cfg.serial.baudrate, cfg.serial.timeout,
                         cfg.serial.retries, wakeup=cfg.serial.wakeup) as bus:
+            if args.command == "probe":
+                print("Provo le sequenze di risveglio (circa un minuto). Tieni ferma la testina.")
+                for label, data, frame in bus.probe_optical():
+                    print(f"- {label}: ", end="")
+                    if not data:
+                        print("nessuna risposta")
+                        continue
+                    print(f"{len(data)} byte ricevuti\n  {data.hex(' ')}")
+                    if frame is not None and frame.kind == "long":
+                        print("\nRISPOSTA VALIDA con questa sequenza:\n")
+                        args.raw, args.json = False, False
+                        _output([decode_telegram(frame)], args)
+                        return 0
+                    if frame is not None:
+                        print("  (il contatore ha risposto con una conferma)")
+                print("\nNessuna sequenza ha ottenuto un telegramma completo.")
+                return 1
             if args.command == "scan":
                 print(f"Scansione su {cfg.serial.port} a {cfg.serial.baudrate} baud "
                       "(circa 2 minuti)...")
