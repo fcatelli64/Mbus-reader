@@ -37,18 +37,20 @@ def heat_meter_frame(more=False):
     return frames.long_frame(0x08, 0x00, 0x72, header + recs + tail)
 
 
+SENSOSTAR_RAW = bytes.fromhex(
+    "68 b0 b0 68 08 00 72 14 29 38 61 c5 14 00 0d 22 27 00 00 04 78 02 a1 a8 03 04 6d 0c 33 56 3b"
+    "04 15 74 30 01 00 44 15 3e fa 00 00 84 01 15 73 30 01 00 04 06 99 70 00 00 44 06 05 6d 00 00"
+    "84 01 06 99 70 00 00 84 10 06 70 51 00 00 c4 10 06 58 44 00 00 84 11 06 70 51 00 00 42 6c 3f 3c"
+    "02 6c 5f 3c 84 20 06 00 00 00 00 84 30 06 00 00 00 00 84 40 14 e9 d4 00 00 84 80 40 14 93 64 00 00"
+    "04 3b 00 00 00 00 14 3b 7d 09 00 00 04 2b 00 00 00 00 14 2b fd 06 01 00 02 5b 13 00 02 5f 13 00"
+    "04 61 00 00 00 00 02 23 30 0f 01 fd 17 00 04 90 28 13 00 00 00 38 16"
+)
+
+
 def sensostar_frame():
-    """Telegramma reale di un SensoStar 2 caldo/freddo, letto dall'interfaccia
-    ottica (record ricostruiti dall'output di ``read``; coda parziale)."""
-    header = bytes.fromhex("14293861 C514 00 0D 21 27 0000")
-    recs = bytes.fromhex(
-        "047802a1a803 046d0333563b 041574300100 44153efa0000 84011573300100"
-        "040699700000 4406056d0000 84010699700000 84100670510000 c4100658440000"
-        "84110670510000 426c3f3c 026c5f3c 84200600000000 84300600000000"
-        "844014e9d40000 8480401493640000 043b00000000 143b7d090000 042b00000000"
-        "142bfd060100 025b1300 025f1300 02610000 01fd1700"
-    )
-    return frames.long_frame(0x08, 0x00, 0x72, header + recs)
+    """Telegramma reale di un SensoStar 2 caldo/freddo (M-Bus + 2 ingressi
+    impulsi), letto dall'interfaccia ottica il 22/11/2026."""
+    return SENSOSTAR_RAW
 
 
 def test_sensostar_real_telegram():
@@ -62,6 +64,8 @@ def test_sensostar_real_telegram():
     assert s["date_s1"] == "2025-12-31" and s["date"] == "2026-12-31"
     assert s["energy_t2"] == 0 and s["volume_flow_max"] == 2.429 and s["power_max"] == 67325
     assert s["flow_temperature"] == 19 and s["return_temperature"] == 19
+    assert s["temperature_difference"] == 0 and s["on_time"] == 3888 and s["error_flags"] == 0
+    assert len(t.records) == 27 and t.battery_low
 
     msgs = discovery_messages(Config(), MeterConfig(name="Catelli"), [t])
     base = "homeassistant/sensor/mbus_61382914/"
@@ -71,6 +75,7 @@ def test_sensostar_real_telegram():
     assert msgs[base + "volume_u2/config"]["name"] == "Acqua calda"
     assert msgs[base + "volume_u2/config"]["device_class"] == "water"
     assert msgs[base + "energy_s1/config"]["name"] == "Energia (storico 1)"
+    assert msgs[base + "volume_x28/config"]["entity_category"] == "diagnostic"
 
 
 def test_frame_builders():

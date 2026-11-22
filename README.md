@@ -132,14 +132,19 @@ sudo reboot
 L'ultima riga spegne il Bluetooth del Pi 3: è necessario, perché la porta
 seriale che resta libera altrimenti non supporta la parità richiesta da M-Bus.
 
-Nella configurazione: `port: /dev/serial0`, senza `wakeup`. Dal manuale del
-SensoStar 2/2+: l'interfaccia ottica lavora a 2400 baud, si attiva premendo il
-tasto del contatore e si disattiva dopo 60 secondi senza un telegramma valido;
-è alimentata dalla batteria, quindi il numero di letture è limitato. Premi il
-tasto, appoggia la testina sulla finestrella e lancia subito
-`mbus-reader -c … -v read --raw` (oppure `probe`, che prova anche alcune
-sequenze di risveglio usate da altri modelli). Non ancora verificato su un
-contatore reale.
+Nella configurazione: `port: /dev/serial0`, `baudrate: 2400`, senza `wakeup`.
+Procedura verificata su un SensoStar 2 del 2016:
+
+1. premi il tasto del contatore: l'interfaccia ottica resta attiva 60 secondi;
+2. appoggia la testina sulla finestrella. **Nel contatore i due LED sono uno
+   sopra l'altro**: se nella testina sono affiancati, va ruotata di un quarto
+   di giro (cavo di lato);
+3. lancia `mbus-reader -c … read --raw`.
+
+Per trovare la posizione, `mbus-reader -c … aim` invia richieste a ripetizione
+e segnala subito quando il contatore risponde. Il contatore ammette al massimo
+300 letture ottiche al giorno. `probe` e l'opzione `wakeup` servono solo per
+altri modelli che richiedono una sequenza di risveglio.
 
 ## Pannello per smartphone
 

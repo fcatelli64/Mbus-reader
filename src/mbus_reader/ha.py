@@ -101,7 +101,7 @@ def discovery_messages(cfg: Config, meter: MeterConfig, telegrams: list[Telegram
                 payload["state_class"] = r.state_class
             if r.quantity in _PRECISION and r.unit:
                 payload["suggested_display_precision"] = _PRECISION[r.quantity]
-            if r.storage or r.quantity in _DIAGNOSTIC:
+            if r.storage or r.quantity in _DIAGNOSTIC or re.search(r"_x[0-9a-f]{2}", r.key):
                 payload["entity_category"] = "diagnostic"
             out[f"{cfg.mqtt.discovery_prefix}/sensor/{uid}/{r.key}/config"] = payload
     for key, name, device_class in _BINARY:
