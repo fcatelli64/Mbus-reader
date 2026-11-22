@@ -234,3 +234,15 @@ def test_probe_optical_finds_reply():
     with MBusClient("x", serial_factory=lambda: fake) as bus:
         label, data, frame = next(bus.probe_optical(listen=0.05))
     assert "senza risveglio" in label and frame.kind == "long" and data == heat_meter_frame()
+
+
+def test_aim_stops_on_valid_frame():
+    fake = FakeSerial({frames.req_ud2(254, True): b"\x00\x01", frames.req_ud2(254, False): heat_meter_frame()},
+                      echo=True)
+    with MBusClient("x", serial_factory=lambda: fake) as bus:
+        results = []
+        for n, data, frame in bus.aim(duration=5, listen=0.05):
+            results.append((n, len(data), frame and frame.kind))
+            if frame is not None and frame.kind == "long":
+                break
+    assert results[0] == (1, 2, None) and results[1][2] == "long"

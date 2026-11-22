@@ -240,6 +240,43 @@ class MBusClient:
             yield label, data, frame
             time.sleep(1.0)
 
+    def aim(self, duration: float = 120.0, listen: float = 1.5):
+        """Richieste a ripetizione per trovare la posizione giusta della testina.
+
+        Genera ``(numero, byte_ricevuti, frame)`` a ogni tentativo.
+        """
+        ser = self._ser
+        if ser is None:
+            raise MBusError("porta non aperta")
+        end = time.monotonic() + duration
+        n = 0
+        while time.monotonic() < end:
+            n += 1
+            self.wake()
+            req = frames.req_ud2(frames.ADDR_BROADCAST_REPLY, fcb=bool(n % 2))
+            ser.reset_input_buffer()
+            ser.write(req)
+            ser.flush()
+            buf = bytearray()
+            deadline = time.monotonic() + listen
+            frame = None
+            while time.monotonic() < deadline:
+                chunk = ser.read(256)
+                if not chunk:
+                    continue
+                buf += chunk
+                deadline = max(deadline, time.monotonic() + 0.4)  # finché arrivano byte
+                data = bytes(buf)
+                if data.startswith(req):
+                    data = data[len(req):]
+                frame, _ = frames.next_frame(data)
+                if frame is not None and frame.kind == "long":
+                    break
+            data = bytes(buf)
+            if data.startswith(req):
+                data = data[len(req):]
+            yield n, data, frame
+
     def scan(self, addresses=range(0, 251), timeout: float = 0.4):
         """Scansione degli indirizzi primari; genera quelli che rispondono."""
         for address in addresses:

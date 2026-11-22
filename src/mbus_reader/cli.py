@@ -70,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("dashboard", help="stampa la dashboard YAML per Home Assistant")
     sub.add_parser("probe", help="testina ottica: prova varie sequenze di risveglio")
+    aim = sub.add_parser("aim", help="testina ottica: richieste continue per trovare la posizione")
+    aim.add_argument("--seconds", type=int, default=120, help="durata della prova (120)")
     sub.add_parser("panel", help="stampa la configurazione del pannello per smartphone")
 
     args = p.parse_args(argv)
@@ -124,6 +126,21 @@ def main(argv: list[str] | None = None) -> int:
 
         with MBusClient(cfg.serial.port, cfg.serial.baudrate, cfg.serial.timeout,
                         cfg.serial.retries, wakeup=cfg.serial.wakeup) as bus:
+            if args.command == "aim":
+                print(f"Richieste continue per {args.seconds} s a {cfg.serial.baudrate} baud"
+                      f"{', con risveglio' if cfg.serial.wakeup > 0 else ''}. "
+                      "Muovi lentamente la testina; Ctrl+C per fermare.")
+                for n, data, frame in bus.aim(args.seconds):
+                    if not data:
+                        print(f"{n:3d}: nessuna risposta")
+                    elif frame is not None and frame.kind == "long":
+                        print(f"{n:3d}: RISPOSTA VALIDA ({len(data)} byte)\nRAW: {frame.raw.hex(' ')}\n")
+                        args.raw, args.json = False, False
+                        _output([decode_telegram(frame)], args)
+                        return 0
+                    else:
+                        print(f"{n:3d}: {len(data)} byte ricevuti ma non validi\n     {data.hex(' ')}")
+                return 1
             if args.command == "probe":
                 print("Provo le sequenze di risveglio (circa un minuto). Tieni ferma la testina.")
                 for label, data, frame in bus.probe_optical():
