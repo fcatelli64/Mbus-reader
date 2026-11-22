@@ -46,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="mbus-reader", description="Lettore M-Bus per Home Assistant")
     p.add_argument("-c", "--config", help="file di configurazione YAML")
     p.add_argument("-v", "--verbose", action="store_true", help="mostra i byte scambiati")
+    p.add_argument("--baudrate", type=int, help="velocità seriale (sostituisce la configurazione)")
+    p.add_argument("--wakeup", type=float, help="secondi di risveglio ottico (0 = nessuno)")
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -88,6 +90,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         cfg = load_config(args.config)
+        if args.baudrate:
+            cfg.serial.baudrate = args.baudrate
+        if args.wakeup is not None:
+            cfg.serial.wakeup = args.wakeup
         if args.command == "run":
             from .ha import run
 
