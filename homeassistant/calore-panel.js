@@ -207,6 +207,11 @@ class CalorePanel extends HTMLElement {
   }
   _entity(m, key) {
     if (m.entities && m.entities[key]) return m.entities[key];
+    if (key === "cooling") {
+      // presente solo sui contatori caldo/freddo
+      const id = `sensor.${m.id}_energia_raffrescamento`;
+      return this._hass && this._hass.states[id] ? id : null;
+    }
     return SUFFIX[key] ? `sensor.${m.id}_${SUFFIX[key]}` : null;
   }
   _state(m, key) {

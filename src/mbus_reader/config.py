@@ -23,6 +23,9 @@ class MeterConfig:
     name: str = "Contabilizzatore calore"
     primary_address: int = 254
     secondary_address: str | None = None
+    # nomi dei due ingressi a impulsi (contatori acqua collegati al contabilizzatore)
+    input1: str = "Acqua fredda"
+    input2: str = "Acqua calda"
 
 
 @dataclass

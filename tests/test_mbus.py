@@ -37,6 +37,42 @@ def heat_meter_frame(more=False):
     return frames.long_frame(0x08, 0x00, 0x72, header + recs + tail)
 
 
+def sensostar_frame():
+    """Telegramma reale di un SensoStar 2 caldo/freddo, letto dall'interfaccia
+    ottica (record ricostruiti dall'output di ``read``; coda parziale)."""
+    header = bytes.fromhex("14293861 C514 00 0D 21 27 0000")
+    recs = bytes.fromhex(
+        "047802a1a803 046d0333563b 041574300100 44153efa0000 84011573300100"
+        "040699700000 4406056d0000 84010699700000 84100670510000 c4100658440000"
+        "84110670510000 426c3f3c 026c5f3c 84200600000000 84300600000000"
+        "844014e9d40000 8480401493640000 043b00000000 143b7d090000 042b00000000"
+        "142bfd060100 025b1300 025f1300 02610000 01fd1700"
+    )
+    return frames.long_frame(0x08, 0x00, 0x72, header + recs)
+
+
+def test_sensostar_real_telegram():
+    t = decode_telegram(frames.next_frame(sensostar_frame())[0])
+    s = t.as_dict()
+    assert (t.meter_id, t.manufacturer, t.medium) == ("61382914", "EFE", "Calore / Raffrescamento")
+    assert s["fabrication_number"] == "61382914"
+    assert s["energy"] == 28825 and s["energy_s1"] == 27909
+    assert s["cooling_energy"] == 20848 and s["cooling_energy_s1"] == 17496
+    assert s["volume"] == 7794.0 and s["volume_u1"] == 545.05 and s["volume_u2"] == 257.47
+    assert s["date_s1"] == "2025-12-31" and s["date"] == "2026-12-31"
+    assert s["energy_t2"] == 0 and s["volume_flow_max"] == 2.429 and s["power_max"] == 67325
+    assert s["flow_temperature"] == 19 and s["return_temperature"] == 19
+
+    msgs = discovery_messages(Config(), MeterConfig(name="Catelli"), [t])
+    base = "homeassistant/sensor/mbus_61382914/"
+    cool = msgs[base + "cooling_energy/config"]
+    assert cool["name"] == "Energia raffrescamento" and cool["state_class"] == "total_increasing"
+    assert msgs[base + "volume_u1/config"]["name"] == "Acqua fredda"
+    assert msgs[base + "volume_u2/config"]["name"] == "Acqua calda"
+    assert msgs[base + "volume_u2/config"]["device_class"] == "water"
+    assert msgs[base + "energy_s1/config"]["name"] == "Energia (storico 1)"
+
+
 def test_frame_builders():
     assert frames.snd_nke(254) == bytes.fromhex("1040FE3E16")
     assert frames.req_ud2(254) == bytes.fromhex("105BFE5916")
@@ -203,7 +239,7 @@ def test_multi_meter_config_simulation_dashboard(tmp_path):
     # la simulazione crea le stesse entità (stessi unique_id e classi) dei dati veri
     sim = discovery_messages(cfg, cfg.meters[0], results[0][1])
     real = discovery_messages(
-        cfg, cfg.meters[0], [decode_telegram(frames.next_frame(heat_meter_frame())[0])])
+        cfg, cfg.meters[0], [decode_telegram(frames.next_frame(sensostar_frame())[0])])
     for topic, payload in sim.items():
         assert payload == real[topic], topic
 

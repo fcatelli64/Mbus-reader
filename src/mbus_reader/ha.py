@@ -87,10 +87,16 @@ def discovery_messages(cfg: Config, meter: MeterConfig, telegrams: list[Telegram
                 "unique_id": f"{uid}_{r.key}",
                 "value_template": f"{{{{ value_json.{r.key} }}}}",
             }
+            water = r.quantity == "volume" and r.subunit in (1, 2)
+            if water:  # ingressi a impulsi: contatori dell'acqua
+                label = meter.input1 if r.subunit == 1 else meter.input2
+                payload["name"] = r.name.replace(f"Volume unità {r.subunit}", label, 1)
             if r.unit and r.device_class not in ("date", "timestamp"):
                 payload["unit_of_measurement"] = r.unit
             if r.device_class and (r.unit or r.device_class in ("date", "timestamp")):
                 payload["device_class"] = r.device_class
+            if water and r.unit:
+                payload["device_class"] = "water"
             if r.state_class:
                 payload["state_class"] = r.state_class
             if r.quantity in _PRECISION and r.unit:
@@ -134,14 +140,17 @@ def read_all(cfg: Config) -> Iterator[Result]:
 
 
 _SIM = (
-    # chiave, quantità, unità
-    ("energy", "energy", "kWh"),
-    ("volume", "volume", "m³"),
-    ("power", "power", "W"),
-    ("volume_flow", "volume_flow", "m³/h"),
-    ("flow_temperature", "flow_temperature", "°C"),
-    ("return_temperature", "return_temperature", "°C"),
-    ("temperature_difference", "temperature_difference", "K"),
+    # chiave, quantità, unità, ingresso impulsi
+    ("energy", "energy", "kWh", 0),
+    ("cooling_energy", "cooling_energy", "kWh", 0),
+    ("volume", "volume", "m³", 0),
+    ("volume_u1", "volume", "m³", 1),
+    ("volume_u2", "volume", "m³", 2),
+    ("power", "power", "W", 0),
+    ("volume_flow", "volume_flow", "m³/h", 0),
+    ("flow_temperature", "flow_temperature", "°C", 0),
+    ("return_temperature", "return_temperature", "°C", 0),
+    ("temperature_difference", "temperature_difference", "K", 0),
 )
 
 
@@ -162,18 +171,20 @@ def simulate_all(cfg: Config) -> Iterator[Result]:
         flow = round(0.35 + 0.25 * math.sin(phase * 1.3 + 2), 3)
         delta = round(flow_t - return_t, 2)
         values = {
-            "energy": None, "volume": None,
+            "energy": None, "cooling_energy": None, "volume": None,
+            "volume_u1": None, "volume_u2": None,
             "power": int(flow * delta * 1163),
             "volume_flow": flow, "flow_temperature": flow_t,
             "return_temperature": return_t, "temperature_difference": delta,
         }
         records = [
-            Record(key=k, name=QUANTITIES[q][0], quantity=q, value=values[k], unit=u)
-            for k, q, u in _SIM
+            Record(key=k, name=QUANTITIES[q][0] if not sub else f"Volume unità {sub}",
+                   quantity=q, value=values[k], unit=u, subunit=sub)
+            for k, q, u, sub in _SIM
         ]
         yield meter, [Telegram(
             meter_id=meter.secondary_address, manufacturer="EFE", version=0,
-            medium_code=0x04, access_number=int(time.time() / 60) & 0xFF, status=0,
+            medium_code=0x0D, access_number=int(time.time() / 60) & 0xFF, status=0,
             records=records,
         )]
 

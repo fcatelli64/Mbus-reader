@@ -35,6 +35,7 @@ TIME_UNITS = ("s", "min", "h", "d")
 # quantity -> (nome, device_class HA, state_class HA per il valore corrente)
 QUANTITIES: dict[str, tuple[str, str | None, str | None]] = {
     "energy": ("Energia", "energy", "total_increasing"),
+    "cooling_energy": ("Energia raffrescamento", "energy", "total_increasing"),
     "volume": ("Volume", "volume", "total_increasing"),
     "mass": ("Massa", "weight", "total_increasing"),
     "power": ("Potenza", "power", "measurement"),
@@ -475,6 +476,14 @@ def decode_telegram(frame: Frame) -> Telegram:
     if len(d) < 12:
         raise DecodeError("intestazione troppo corta")
     records, mfr, more = decode_records(d[12:])
+    if d[7] == 0x0D:
+        # Contatori caldo/freddo (Engelmann SensoStar): il registro "tariffa 1"
+        # dell'energia è l'energia di raffrescamento.
+        for r in records:
+            if r.quantity == "energy" and r.tariff == 1:
+                r.quantity = "cooling_energy"
+                r.key = r.key.replace("energy_t1", "cooling_energy", 1)
+                r.name = r.name.replace("Energia tariffa 1", "Energia raffrescamento", 1)
     return Telegram(
         meter_id=d[0:4][::-1].hex(),
         manufacturer=decode_manufacturer(int.from_bytes(d[4:6], "little")),
