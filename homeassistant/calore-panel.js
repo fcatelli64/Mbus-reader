@@ -12,6 +12,9 @@ const SUFFIX = {
   flow: "portata",
   t_in: "temperatura_mandata",
   t_out: "temperatura_ritorno",
+  // ingressi impulsi del contabilizzatore (contatori acqua dell'appartamento)
+  water_hot: "acqua_calda",
+  water_cold: "acqua_fredda",
 };
 
 const WEATHER = {
@@ -34,6 +37,8 @@ const ICON = {
   snow: '<path d="M12 2v20M3.3 7l17.4 10M20.7 7 3.3 17M12 6l-2-2M12 6l2-2M12 18l-2 2M12 18l2 2"/>',
   calendar: '<path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/>',
   lock: '<path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"/>',
+  chart: '<path d="M4 20h16M7 16v-5M12 16V7M17 16v-8"/>',
+  drop: '<path d="M12 3s-6 6.6-6 11a6 6 0 0 0 12 0c0-4.4-6-11-6-11z"/>',
 };
 const icon = (name, cls = "") =>
   `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[name]}</svg>`;
@@ -119,7 +124,26 @@ h2{font-size:21px;margin:4px 4px -2px;font-weight:800}
 .homebtn{position:sticky;bottom:calc(env(safe-area-inset-bottom) + 8px);z-index:2;box-shadow:0 4px 14px rgba(20,45,80,.35);background:#2f4a6b;color:#fff;border:0;border-radius:16px;padding:13px;font:inherit;
   font-size:20px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer}
 .foot{text-align:center;font-size:13px;color:#55617a}
-@media(max-width:360px){.clock{font-size:38px}.big{font-size:44px}.metric .v,.energy .v{font-size:19px}}
+.total{display:flex;align-items:center;gap:12px}
+.total>div{flex:1;min-width:0}
+.yearbtn{flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;border:0;cursor:pointer;
+  background:#eaf3fd;color:#2f4a6b;border-radius:16px;padding:12px 12px 10px;font:inherit;font-size:13px;font-weight:700}
+.yearbtn .ic{width:30px;height:30px}
+.yearbtn:active{transform:scale(.96)}
+.mini{padding:12px 14px}
+.mini .k{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700}
+.mini .k .ic{width:22px;height:22px}
+.mini .k .mo{font-weight:500;color:#55617a}
+.mini .v{font-size:24px;font-weight:800;margin-top:4px;white-space:nowrap}
+.water{color:#0ea5b7}
+.yearnav{display:flex;align-items:center;justify-content:center;gap:18px;font-size:22px;font-weight:800}
+.yearnav button{background:#fff;border:0;border-radius:12px;width:40px;height:40px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;color:#2f4a6b;box-shadow:0 2px 8px rgba(40,90,150,.10)}
+.yearnav button:disabled{opacity:.35;cursor:default}
+.yearnav .ic{width:24px;height:24px}
+.flip{transform:scaleX(-1)}
+.sum{font-size:14px;margin-top:2px}
+@media(max-width:360px){.clock{font-size:38px}.big{font-size:44px}.metric .v,.energy .v,.mini .v{font-size:19px}}
 `;
 
 class CalorePanel extends HTMLElement {
@@ -131,9 +155,18 @@ class CalorePanel extends HTMLElement {
     this._config = {};
     this._page = null;
     this._charts = {};
+    this._month = {};
+    this._years = {};
+    this._year = new Date().getFullYear();
     this._sig = "";
     this._demo = new URLSearchParams(window.location.search).has("demo");
     this._root.addEventListener("click", (ev) => {
+      const yr = ev.target.closest("[data-year]");
+      if (yr && !yr.disabled) {
+        this._year = parseInt(yr.dataset.year, 10);
+        this._update(true);
+        return;
+      }
       const el = ev.target.closest("[data-go]");
       if (el) this._go(el.dataset.go);
     });
@@ -204,7 +237,16 @@ class CalorePanel extends HTMLElement {
       t_out: 35.9 + i * 0.6,
       energy: 1248 + i * 310,
       cooling: 386 + i * 45,
+      water_hot: 41.27 + i * 3.1,
+      water_cold: 96.84 + i * 5.7,
     }[key];
+  }
+  // lettura del contatore meccanico = totale impulsi + scostamento iniziale (config)
+  _waterReading(m, key) {
+    const v = this._num(m, key);
+    if (v == null) return null;
+    const off = (m.water_offset || {})[key === "water_hot" ? "hot" : "cold"] || 0;
+    return v + off;
   }
   _mode(m) {
     const p = Math.abs(this._num(m, "power") || 0);
@@ -275,6 +317,130 @@ class CalorePanel extends HTMLElement {
       slot.loading = false;
       this._update(true);
     }
+  }
+
+  async _stats(ids, start, end) {
+    ids = ids.filter(Boolean);
+    if (!ids.length || !this._hass) return {};
+    const msg = {
+      type: "recorder/statistics_during_period", start_time: start.toISOString(),
+      statistic_ids: ids, period: "month", types: ["change"],
+      units: { energy: "kWh", volume: "m³" },
+    };
+    if (end) msg.end_time = end.toISOString();
+    return this._hass.callWS(msg);
+  }
+
+  // consumi del mese in corso, per contatore
+  async _loadMonth() {
+    const s = this._month;
+    if (s.loading || (s.at && Date.now() - s.at < 300000)) return;
+    s.loading = true;
+    try {
+      const now = new Date();
+      const keys = ["energy", "cooling", "water_hot", "water_cold"];
+      const per = {};
+      if (this._demo) {
+        this._meters.forEach((m, i) => {
+          per[m.id] = { energy: 180 + i * 25, cooling: 0, water_hot: 1.8 + i * 0.2, water_cold: 3.9 + i * 0.4 };
+        });
+      } else {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const ids = this._meters.flatMap((m) => keys.map((k) => this._entity(m, k)));
+        const res = await this._stats(ids, start);
+        for (const m of this._meters) {
+          per[m.id] = {};
+          for (const k of keys) {
+            const rows = res[this._entity(m, k)];
+            per[m.id][k] = rows && rows.length ? rows.reduce((t, r) => t + Math.max(0, r.change || 0), 0) : null;
+          }
+        }
+      }
+      s.data = per;
+      s.at = Date.now();
+    } catch (err) {
+      console.error("calore-panel: consumi mensili non disponibili", err);
+      s.at = Date.now() - 240000;
+    } finally {
+      s.loading = false;
+      this._update(true);
+    }
+  }
+
+  // consumi mese per mese di un anno, sommati su tutti i contatori
+  async _loadYear(year) {
+    const s = (this._years[year] = this._years[year] || {});
+    const current = year === new Date().getFullYear();
+    if (s.loading || (s.at && (!current || Date.now() - s.at < 600000))) return;
+    s.loading = true;
+    try {
+      const out = { heat: Array(12).fill(0), cool: Array(12).fill(0), hot: Array(12).fill(0), cold: Array(12).fill(0) };
+      const has = { heat: false, cool: false, hot: false, cold: false };
+      if (this._demo) {
+        out.heat = [610, 520, 380, 150, 20, 0, 0, 0, 0, 90, 340, 560];
+        out.cool = [0, 0, 0, 0, 40, 210, 330, 300, 120, 0, 0, 0];
+        out.hot = [14, 13, 14, 12, 11, 9, 8, 6, 10, 12, 13, 15];
+        out.cold = [30, 28, 31, 30, 33, 38, 42, 35, 32, 30, 29, 31];
+        Object.keys(has).forEach((k) => (has[k] = true));
+      } else {
+        const map = { energy: "heat", cooling: "cool", water_hot: "hot", water_cold: "cold" };
+        const pairs = this._meters.flatMap((m) => Object.keys(map).map((k) => [this._entity(m, k), map[k]]))
+          .filter(([id]) => id);
+        const res = await this._stats(pairs.map(([id]) => id), new Date(year, 0, 1), new Date(year + 1, 0, 1));
+        for (const [id, series] of pairs) {
+          for (const r of res[id] || []) {
+            const d = new Date(r.start);
+            if (d.getFullYear() !== year) continue;
+            out[series][d.getMonth()] += Math.max(0, r.change || 0);
+            has[series] = true;
+          }
+        }
+      }
+      s.data = { ...out, has };
+      s.at = Date.now();
+    } catch (err) {
+      console.error("calore-panel: consumi annuali non disponibili", err);
+      s.at = Date.now() - 540000;
+    } finally {
+      s.loading = false;
+      this._update(true);
+    }
+  }
+
+  // istogramma di 12 mesi, serie impilate
+  _yearChart(series, unit, digits = 0) {
+    const tot = Array.from({ length: 12 }, (_, i) => series.reduce((t, s) => t + (s.values[i] || 0), 0));
+    const top = Math.max(...tot);
+    if (!(top > 0)) return `<div class="empty">Nessun consumo registrato in questo anno</div>`;
+    const W = 340, H = 160, L = 32, R = 4, T = 10, B = 22;
+    const max = niceMax(top);
+    const y = (v) => T + (1 - v / max) * (H - T - B);
+    const slotW = (W - L - R) / 12, bw = slotW * 0.62;
+    let out = "";
+    for (let k = 0; k <= 4; k++) {
+      const v = (max * k) / 4;
+      out += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="#e3e9f1"/>` +
+        `<text x="${L - 5}" y="${y(v) + 4}" text-anchor="end">${fmt(v, Number.isInteger(max / 4) ? 0 : 1)}</text>`;
+    }
+    for (let i = 0; i < 12; i++) {
+      const cx = L + slotW * (i + 0.5);
+      let base = 0;
+      for (const s of series) {
+        const v = s.values[i] || 0;
+        if (v > 0) {
+          const y0 = y(base), y1 = y(base + v);
+          out += `<rect x="${(cx - bw / 2).toFixed(1)}" y="${y1.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1.5, y0 - y1).toFixed(1)}" rx="1.5" fill="${s.color}"/>`;
+        }
+        base += v;
+      }
+      out += `<text x="${cx}" y="${H - 6}" text-anchor="middle">${MONTHS[i].charAt(0)}</text>`;
+    }
+    const legend = series.length > 1
+      ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("")}</div>`
+      : "";
+    const sum = tot.reduce((a, b) => a + b, 0);
+    return `<div class="sum muted">Totale anno: <b>${fmt(sum, digits)} ${unit}</b></div>
+      <div class="small muted">${unit}</div><svg class="chart" viewBox="0 0 ${W} ${H}">${out}</svg>${legend}`;
   }
 
   _powerChart(points) {
@@ -361,7 +527,19 @@ class CalorePanel extends HTMLElement {
     const modes = this._meters.map((m) => this._mode(m));
     const heat = modes.filter((x) => x === "heat").length, cool = modes.filter((x) => x === "cool").length;
     const mode = heat + cool === 0 ? "idle" : heat >= cool ? "heat" : "cool";
-    const label = { heat: "Riscaldamento attivo", cool: "Raffrescamento attivo", idle: "Impianto fermo" }[mode];
+    const label = { heat: "Riscaldamento attivo totale", cool: "Raffrescamento attivo totale", idle: "Impianto fermo" }[mode];
+    this._loadMonth();
+    const md = this._month.data;
+    const sumOf = (k) => {
+      if (!md) return null;
+      const v = this._meters.map((m) => (md[m.id] || {})[k]).filter((x) => x != null);
+      return v.length ? v.reduce((a, b) => a + b, 0) : null;
+    };
+    const eHeat = sumOf("energy"), eCool = sumOf("cooling");
+    const wHot = sumOf("water_hot"), wCold = sumOf("water_cold");
+    const wTot = wHot == null && wCold == null ? null : (wHot || 0) + (wCold || 0);
+    const month = now.toLocaleDateString("it-IT", { month: "short" }).replace(".", "");
+    const wait = md ? "—" : "…";
     const tiles = this._meters.map((m) => {
       const p = this._num(m, "power");
       return `<button class="card tile" data-go="${esc(m.id)}">${icon("building", "b")}
@@ -373,10 +551,18 @@ class CalorePanel extends HTMLElement {
       <div class="${weather ? "row" : ""}">
         <div class="card center"><div class="date">${date}</div><div class="clock">${time}</div></div>${weather}
       </div>
-      <div class="card"><div class="label">Potenza termica totale</div>
+      <div class="card total"><div><div class="label">Potenza termica totale</div>
         <div class="big">${fmt(total, 1)} kW</div>
-        <div class="status ${mode}">${icon(mode === "cool" ? "snow" : "heat")}${label}</div>
-        <div class="muted" style="margin-top:6px">Somma dei ${this._meters.length} contabilizzatori</div></div>
+        <div class="status ${mode}">${icon(mode === "cool" ? "snow" : "heat")}${label}</div></div>
+        <button class="yearbtn" data-go="annuale" aria-label="Consumi annuali">${icon("chart")}Annuale</button></div>
+      <div class="row">
+        <div class="card mini"><div class="k"><span class="heat">${icon("heat")}</span>Energia<span class="mo">· ${month}</span></div>
+          <div class="v">${eHeat == null ? wait : `${fmt(eHeat)} kWh`}</div>
+          ${eCool > 0 ? `<div class="small muted">Raffrescamento ${fmt(eCool)} kWh</div>` : `<div class="small muted">Riscaldamento</div>`}</div>
+        <div class="card mini"><div class="k"><span class="water">${icon("drop")}</span>Acqua<span class="mo">· ${month}</span></div>
+          <div class="v">${wTot == null ? wait : `${fmt(wTot, 2)} m³`}</div>
+          <div class="small muted">Calda ${fmt(wHot, 2)} · Fredda ${fmt(wCold, 2)} m³</div></div>
+      </div>
       <h2>${esc(cfg.group_title || "Condomini")}</h2>
       <div class="tiles">${tiles.join("")}</div>
       <div class="foot">Aggiornato alle ${time}${this._demo ? " · Dati di esempio" : ""}</div>`;
@@ -384,6 +570,7 @@ class CalorePanel extends HTMLElement {
 
   _detail(m, now) {
     this._loadCharts(m);
+    this._loadMonth();
     const date = cap(now.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
     const time = now.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
     const online = this._online(m);
@@ -409,6 +596,18 @@ class CalorePanel extends HTMLElement {
           <div><span class="heat">${icon("heat")}</span><div><div class="muted">Riscaldamento</div><div class="v">${fmt(energy)} kWh</div></div></div>
           ${hasCool ? `<div><span class="cool">${icon("snow")}</span><div><div class="muted">Raffrescamento</div><div class="v">${fmt(cooling)} kWh</div></div></div>` : ""}
         </div></div>
+      <div class="card"><div class="label">Acqua · ${now.toLocaleDateString("it-IT", { month: "long" })}</div>
+        <div class="muted">Consumo del mese e lettura del contatore</div>
+        <div class="energy">
+          ${["water_hot", "water_cold"].map((k) => {
+            const md = (this._month.data || {})[m.id] || {};
+            const r = this._waterReading(m, k);
+            return `<div><span class="${k === "water_hot" ? "heat" : "water"}">${icon("drop")}</span><div>
+              <div class="muted">${k === "water_hot" ? "Calda" : "Fredda"}</div>
+              <div class="v">${fmt(md[k], 2)} m³</div>
+              <div class="small muted">Contatore ${fmt(r, 2)} m³</div></div></div>`;
+          }).join("")}
+        </div></div>
       <div class="card"><div class="label">Potenza · ultime 24 ore</div>
         ${data ? this._powerChart(data.power) : `<div class="empty">Caricamento…</div>`}</div>
       <div class="card"><div class="label">Energia · ultimi 6 mesi</div>
@@ -417,16 +616,49 @@ class CalorePanel extends HTMLElement {
       <button class="homebtn" data-go="">${icon("home")}Home</button>`;
   }
 
+  _yearPage(now) {
+    const year = this._year, thisYear = now.getFullYear();
+    this._loadYear(year);
+    const d = (this._years[year] || {}).data;
+    const card = (title, body) => `<div class="card"><div class="label">${title}</div>${body}</div>`;
+    const loading = `<div class="empty">Caricamento…</div>`;
+    let charts = loading + loading + loading;
+    if (d) {
+      charts =
+        card(`<span class="heat">Riscaldamento</span> · energia`,
+          this._yearChart([{ name: "Riscaldamento", color: "#fb923c", values: d.heat }], "kWh")) +
+        card(`<span class="cool">Raffrescamento</span> · energia`,
+          d.has.cool || this._demo
+            ? this._yearChart([{ name: "Raffrescamento", color: "#2b8cf0", values: d.cool }], "kWh")
+            : `<div class="empty">Nessun dato di raffrescamento</div>`) +
+        card(`<span class="water">Acqua</span> · consumo`,
+          this._yearChart([
+            { name: "Calda", color: "#fb923c", values: d.hot },
+            { name: "Fredda", color: "#0ea5b7", values: d.cold },
+          ], "m³", 1));
+    }
+    return `<div class="head"><button data-go="" aria-label="Indietro">${icon("back")}</button>
+        <div><div class="t">Consumi annuali</div><div class="muted">Totale dei ${this._meters.length} contabilizzatori</div></div></div>
+      <div class="yearnav">
+        <button data-year="${year - 1}" aria-label="Anno precedente">${icon("chevron", "flip")}</button>
+        <span>${year}</span>
+        <button data-year="${year + 1}" aria-label="Anno successivo" ${year >= thisYear ? "disabled" : ""}>${icon("chevron")}</button>
+      </div>
+      ${charts}
+      <div class="foot">Valori mensili dalle statistiche di Home Assistant${this._demo ? " · Dati di esempio" : ""}</div>
+      <button class="homebtn" data-go="">${icon("home")}Home</button>`;
+  }
+
   _update(force) {
     if (!this.isConnected) return;
     const now = new Date();
     const m = this._page && this._meters.find((x) => x.id === this._page);
     // ridisegna solo se cambia qualcosa che si vede
-    let sig = `${this._page}|${now.getHours()}:${now.getMinutes()}|${this._demo}|${this._meters.length}`;
+    let sig = `${this._page}|${this._year}|${now.getHours()}:${now.getMinutes()}|${this._demo}|${this._meters.length}`;
     if (this._hass && !this._demo) {
       const ids = [];
       for (const x of m ? [m] : this._meters)
-        for (const k of ["power", "flow", "t_in", "t_out", "energy", "cooling"]) ids.push(this._entity(x, k));
+        for (const k of ["power", "flow", "t_in", "t_out", "energy", "cooling", "water_hot", "water_cold"]) ids.push(this._entity(x, k));
       const wid = this._config.weather || Object.keys(this._hass.states).find((k) => k.startsWith("weather."));
       if (!m && wid) ids.push(wid);
       for (const id of ids) {
@@ -440,7 +672,7 @@ class CalorePanel extends HTMLElement {
       this._root.innerHTML = `<div class="card">Nessun contabilizzatore configurato: aggiungi <b>meters</b> alla configurazione del pannello.</div>`;
       return;
     }
-    this._root.innerHTML = m ? this._detail(m, now) : this._home(now);
+    this._root.innerHTML = this._page === "annuale" ? this._yearPage(now) : m ? this._detail(m, now) : this._home(now);
   }
 }
 
