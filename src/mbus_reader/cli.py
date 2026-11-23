@@ -64,6 +64,11 @@ def main(argv: list[str] | None = None) -> int:
     run_p = sub.add_parser("run", help="lettura periodica e pubblicazione MQTT")
     run_p.add_argument("--once", action="store_true", help="una sola lettura, poi esce")
 
+    opt = sub.add_parser(
+        "optical", help="testina ottica: legge il contatore su cui è appoggiata e lo pubblica")
+    opt.add_argument("--seconds", type=int, default=120, help="durata massima della ricerca (120)")
+    opt.add_argument("--no-publish", action="store_true", help="mostra i valori senza pubblicarli")
+
     sim = sub.add_parser("simulate", help="pubblica dati finti su MQTT (senza contatori)")
     sim.add_argument("--once", action="store_true", help="una sola pubblicazione, poi esce")
     sim.add_argument("--interval", type=int, default=60, help="secondi tra gli invii (60)")
@@ -96,6 +101,39 @@ def main(argv: list[str] | None = None) -> int:
             cfg.serial.baudrate = args.baudrate
         if args.wakeup is not None:
             cfg.serial.wakeup = args.wakeup
+        if args.command == "optical":
+            from .config import MeterConfig
+
+            print("Premi il tasto del contatore e appoggia la testina (LED in verticale). "
+                  "Ctrl+C per fermare.")
+            telegram = None
+            with MBusClient(cfg.serial.port, cfg.serial.baudrate, cfg.serial.timeout,
+                            cfg.serial.retries, wakeup=cfg.serial.wakeup) as bus:
+                for n, data, frame in bus.aim(args.seconds):
+                    if frame is not None and frame.kind == "long":
+                        telegram = decode_telegram(frame)
+                        telegram.raw = frame.raw  # type: ignore[attr-defined]
+                        break
+                    print(f"{n:3d}: " + (f"{len(data)} byte non validi" if data else "nessuna risposta"))
+            if telegram is None:
+                print("Nessuna risposta valida dal contatore.", file=sys.stderr)
+                return 1
+            # il contatore si riconosce dal numero di serie, non dalla posizione
+            meter = next((m for m in cfg.meters if m.secondary_address == telegram.meter_id), None)
+            if meter is None and len(cfg.meters) == 1 and not cfg.meters[0].secondary_address:
+                meter = cfg.meters[0]
+            if meter is None:
+                meter = MeterConfig(name=f"Contatore {telegram.meter_id}")
+                print(f"ATTENZIONE: il numero di serie {telegram.meter_id} non è nella "
+                      "configurazione; uso un nome provvisorio.", file=sys.stderr)
+            print(f"\n== {meter.name} ==")
+            args.raw, args.json = True, False
+            _output([telegram], args)
+            if not args.no_publish:
+                from .ha import run
+
+                run(cfg, once=True, source=lambda _cfg: iter([(meter, [telegram])]))
+            return 0
         if args.command == "run":
             from .ha import run
 

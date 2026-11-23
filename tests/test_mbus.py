@@ -287,3 +287,19 @@ def test_aim_stops_on_valid_frame():
             if frame is not None and frame.kind == "long":
                 break
     assert results[0] == (1, 2, None) and results[1][2] == "long"
+
+
+def test_optical_identifies_meter_by_serial(tmp_path, monkeypatch, capsys):
+    from mbus_reader import cli
+
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        "meters:\n"
+        "  - {name: Dipietro, secondary_address: '73051417'}\n"
+        "  - {name: Catelli, secondary_address: '61382914'}\n", encoding="utf-8")
+    fake = FakeSerial({frames.req_ud2(254, True): SENSOSTAR_RAW}, echo=True)
+    monkeypatch.setattr(cli, "MBusClient",
+                        lambda *a, **k: MBusClient("x", serial_factory=lambda: fake))
+    assert cli.main(["-c", str(path), "optical", "--no-publish"]) == 0
+    out = capsys.readouterr().out
+    assert "== Catelli ==" in out and "cooling_energy" in out and "RAW: 68 b0" in out

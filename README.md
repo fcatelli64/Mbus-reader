@@ -141,6 +141,11 @@ Procedura verificata su un SensoStar 2 del 2016:
    di giro (cavo di lato);
 3. lancia `mbus-reader -c … read --raw`.
 
+Con tutti i contatori elencati nella configurazione (nome e numero di serie),
+`mbus-reader -c … optical` fa tutto da solo: cerca la risposta, riconosce il
+contatore dal numero di serie, mostra i valori e li pubblica su Home Assistant
+sotto il nome giusto. Va ripetuto contatore per contatore.
+
 Per trovare la posizione, `mbus-reader -c … aim` invia richieste a ripetizione
 e segnala subito quando il contatore risponde. Il contatore ammette al massimo
 300 letture ottiche al giorno. `probe` e l'opzione `wakeup` servono solo per
