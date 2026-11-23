@@ -22,7 +22,12 @@ id mbus >/dev/null 2>&1 || useradd --system --groups dialout --home "$DEST" --sh
 echo "==> Programma in $DEST"
 mkdir -p "$DEST"
 [ -d "$DEST/.venv" ] || python3 -m venv "$DEST/.venv"
-"$DEST/.venv/bin/pip" install --quiet --upgrade "$SRC"
+# niente residui di installazioni precedenti: si ricostruisce sempre dai sorgenti
+rm -rf "$SRC/build" "$SRC"/src/*.egg-info
+"$DEST/.venv/bin/pip" install --quiet --upgrade --force-reinstall --no-deps "$SRC"
+"$DEST/.venv/bin/pip" install --quiet "$SRC"
+"$DEST/.venv/bin/python" -c "from mbus_reader.ha import run, panel_config; from mbus_reader.cli import main" \
+    || { echo "ERRORE: installazione incompleta (vedi sopra)" >&2; exit 1; }
 ln -sf "$DEST/.venv/bin/mbus-reader" /usr/local/bin/mbus-reader
 
 echo "==> Configurazione"
