@@ -326,6 +326,7 @@ def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_
     by_id: dict[str, MeterConfig] = {
         m.secondary_address: m for m in cfg.meters if m.secondary_address}
     last_read: dict[str, list[Telegram]] = {}
+    read_at: dict[str, float] = {}
     discovered: set[str] = set()
     failures: dict[str, int] = {}
     last = None
@@ -335,7 +336,6 @@ def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_
         nonlocal last
         meter_id = result[0].meter_id
         by_id[meter_id] = meter
-        last_read[meter_id] = result
         base = f"{base_topic}/{meter_id}"
         if meter_id not in discovered:
             discovered.add(meter_id)
@@ -359,6 +359,8 @@ def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_
                                    "offline", qos=1, retain=True)
                 continue
             failures[meter.name] = 0
+            last_read[result[0].meter_id] = result
+            read_at[result[0].meter_id] = time.monotonic()
             publish(meter, result)
             log.info("%s (%s): %d valori pubblicati", meter.name, result[0].meter_id,
                      sum(len(t.records) for t in result))
@@ -374,7 +376,11 @@ def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_
             poll([meter])
             return
         n, value = command[2], command[3]
-        poll([meter])  # la lettura reale va confrontata con un conteggio appena letto
+        # La lettura reale va confrontata con un conteggio recente; se il
+        # contatore è stato letto da meno di un minuto non lo si interroga di
+        # nuovo (due letture ravvicinate possono restare senza risposta).
+        if time.monotonic() - read_at.get(meter_id, -1e9) > 60:
+            poll([meter])
         result = last_read.get(meter_id)
         raw = merge_state(result).get(f"volume_u{n}") if result else None
         if not isinstance(raw, (int, float)):

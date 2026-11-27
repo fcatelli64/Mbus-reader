@@ -355,7 +355,7 @@ def test_read_button_and_water_alignment(tmp_path, monkeypatch):
             client.press("mbus/99999999/read")       # contatore sconosciuto: ignorato
             client.press("mbus/61382914/water2/set", b"abc")  # non numerico: ignorato
             client.press("mbus/61382914/read")
-        if len(calls) == 4:
+        if len(calls) == 3:
             raise KeyboardInterrupt  # fine della prova
         yield _cfg.meters[0], [telegram]
 
@@ -363,7 +363,8 @@ def test_read_button_and_water_alignment(tmp_path, monkeypatch):
         run(cfg, source=source)
 
     # giro completo, poi letture del solo contatore richiesto
-    assert calls == [None, ["Catelli"], ["Catelli"], ["Catelli"]]
+    # l'allineamento riusa la lettura appena fatta, senza interrogare di nuovo
+    assert calls == [None, ["Catelli"], ["Catelli"]]
     client = FakeMqtt.last
     assert "mbus/+/read" in client.subscribed and "mbus/+/water1/set" in client.subscribed
     states = [json.loads(p) for t, p in client.published if t == "mbus/61382914/state"]
