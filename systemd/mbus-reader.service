@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 User=mbus
 Group=dialout
+StateDirectory=mbus-reader
 ExecStart=/opt/mbus-reader/.venv/bin/mbus-reader -c /etc/mbus-reader/config.yaml run
 Restart=always
 RestartSec=30

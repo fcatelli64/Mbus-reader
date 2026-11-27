@@ -6,7 +6,8 @@ from mbus_reader import frames
 from mbus_reader.client import MBusClient, MBusTimeout
 from mbus_reader.config import Config, MeterConfig, load_config
 from mbus_reader.decoder import decode_records, decode_telegram
-from mbus_reader.ha import dashboard, discovery_messages, merge_state, simulate_all
+from mbus_reader.ha import (OffsetStore, build_state, dashboard, discovery_messages,
+                            merge_state, run, simulate_all)
 
 # Esempio ufficiale della documentazione M-Bus (cap. 6.6)
 DOC_EXAMPLE = bytes.fromhex(
@@ -223,7 +224,8 @@ def test_discovery():
     assert msgs["homeassistant/sensor/mbus_61382914/date_s1/config"]["device_class"] == "date"
     assert "device_class" not in msgs["homeassistant/sensor/mbus_61382914/temperature_difference/config"]
     assert "homeassistant/binary_sensor/mbus_61382914/battery_low/config" in msgs
-    assert set(merge_state([t])) >= {m["unique_id"].removeprefix("mbus_61382914_") for m in msgs.values()}
+    assert set(build_state([t])) | {"read"} >= {
+        m["unique_id"].removeprefix("mbus_61382914_") for m in msgs.values()}
 
 
 def test_multi_meter_config_simulation_dashboard(tmp_path):
@@ -303,3 +305,81 @@ def test_optical_identifies_meter_by_serial(tmp_path, monkeypatch, capsys):
     assert cli.main(["-c", str(path), "optical", "--no-publish"]) == 0
     out = capsys.readouterr().out
     assert "== Catelli ==" in out and "cooling_energy" in out and "RAW: 68 b0" in out
+
+
+class FakeMqtt:
+    """Sostituto minimo del client paho: registra ciò che viene pubblicato."""
+    last = None
+
+    def __init__(self, *a, **k):
+        self.published, self.subscribed = [], []
+        FakeMqtt.last = self
+
+    def username_pw_set(self, *a): pass
+    def will_set(self, *a, **k): pass
+    def connect_async(self, *a, **k): pass
+    def loop_stop(self): pass
+    def disconnect(self): pass
+    def is_connected(self): return True
+    def subscribe(self, topic, qos=0): self.subscribed.append(topic)
+
+    def loop_start(self):
+        self.on_connect(self, None, None, "Success", None)
+
+    def publish(self, topic, payload, qos=0, retain=False):
+        self.published.append((topic, payload))
+        return type("Info", (), {"wait_for_publish": lambda self, t=None: None})()
+
+    def press(self, topic, payload=b"PRESS"):
+        self.on_message(self, None, type("Msg", (), {"topic": topic, "payload": payload})())
+
+
+def test_read_button_and_water_alignment(tmp_path, monkeypatch):
+    import json
+
+    import paho.mqtt.client as mqtt
+
+    monkeypatch.setattr(mqtt, "Client", FakeMqtt)
+    cfg = Config(meters=[MeterConfig(name="Catelli", secondary_address="61382914"),
+                         MeterConfig(name="Altro", secondary_address="11111111")],
+                 state_file=str(tmp_path / "state" / "s.json"))
+    telegram = decode_telegram(frames.next_frame(SENSOSTAR_RAW)[0])
+    calls = []
+
+    def source(_cfg, meters=None):
+        calls.append(None if meters is None else [m.name for m in meters])
+        if len(calls) == 1:  # dopo il primo giro arrivano i comandi da Home Assistant
+            client = FakeMqtt.last
+            client.press("mbus/61382914/read")
+            client.press("mbus/61382914/water1/set", b"545.150")
+            client.press("mbus/99999999/read")       # contatore sconosciuto: ignorato
+            client.press("mbus/61382914/water2/set", b"abc")  # non numerico: ignorato
+            client.press("mbus/61382914/read")
+        if len(calls) == 4:
+            raise KeyboardInterrupt  # fine della prova
+        yield _cfg.meters[0], [telegram]
+
+    with pytest.raises(KeyboardInterrupt):
+        run(cfg, source=source)
+
+    # giro completo, poi letture del solo contatore richiesto
+    assert calls == [None, ["Catelli"], ["Catelli"], ["Catelli"]]
+    client = FakeMqtt.last
+    assert "mbus/+/read" in client.subscribed and "mbus/+/water1/set" in client.subscribed
+    states = [json.loads(p) for t, p in client.published if t == "mbus/61382914/state"]
+    assert states[0]["water1_reading"] == 545.05 and states[0]["volume_u1"] == 545.05
+    assert states[-1]["water1_reading"] == 545.15   # lettura mostrata = contatore fisico
+    assert states[-1]["volume_u1"] == 545.05        # il conteggio grezzo non cambia
+    assert states[-1]["water2_reading"] == 257.47
+    # la correzione è salvata e viene riletta al riavvio
+    assert OffsetStore(cfg.state_file).get("61382914", 1) == pytest.approx(0.1)
+
+    topics = dict(client.published)
+    button = json.loads(topics["homeassistant/button/mbus_61382914/read/config"])
+    assert button["command_topic"] == "mbus/61382914/read"
+    number = json.loads(topics["homeassistant/number/mbus_61382914/water1_reading/config"])
+    assert number["name"] == "Acqua fredda lettura reale"
+    assert number["command_topic"] == "mbus/61382914/water1/set"
+
+    text = str(dashboard(cfg))
+    assert "number.catelli_acqua_fredda_lettura_reale" in text and "button.catelli_leggi_ora" in text

@@ -248,6 +248,9 @@ class CalorePanel extends HTMLElement {
   }
   // lettura del contatore meccanico = totale impulsi + scostamento iniziale (config)
   _waterReading(m, key) {
+    // lettura allineata al contatore fisico, se il servizio la pubblica
+    const aligned = !this._demo && this._hass && this._hass.states[`number.${m.id}_${SUFFIX[key]}_lettura_reale`];
+    if (aligned && !Number.isNaN(parseFloat(aligned.state))) return parseFloat(aligned.state);
     const v = this._num(m, key);
     if (v == null) return null;
     const off = (m.water_offset || {})[key === "water_hot" ? "hot" : "cold"] || 0;

@@ -31,7 +31,8 @@ rm -rf "$SRC/build" "$SRC"/src/*.egg-info
 ln -sf "$DEST/.venv/bin/mbus-reader" /usr/local/bin/mbus-reader
 
 echo "==> Configurazione"
-mkdir -p /etc/mbus-reader
+mkdir -p /etc/mbus-reader /var/lib/mbus-reader
+chown mbus /var/lib/mbus-reader
 if [ ! -f "$CONF" ]; then
     cp "$SRC/config.example.yaml" "$CONF"
     NEW_CONF=1

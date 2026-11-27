@@ -45,6 +45,8 @@ class Config:
     meters: list[MeterConfig] = field(default_factory=lambda: [MeterConfig()])
     mqtt: MqttConfig = field(default_factory=MqttConfig)
     poll_interval: int = 900  # secondi tra un giro di letture e il successivo
+    # dove vengono salvate le correzioni delle letture dei contatori dell'acqua
+    state_file: str = "/var/lib/mbus-reader/state.json"
 
 
 def _build(cls, data: dict | None):
@@ -59,7 +61,7 @@ def load_config(path: str | Path | None) -> Config:
     raw: dict = {}
     if path:
         raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    unknown = set(raw) - {"serial", "meters", "mqtt", "poll_interval"}
+    unknown = set(raw) - {"serial", "meters", "mqtt", "poll_interval", "state_file"}
     if unknown:
         raise ValueError(f"sezioni sconosciute nella configurazione: {sorted(unknown)}")
     meters = [_build(MeterConfig, m) for m in raw.get("meters") or [{}]]
@@ -76,6 +78,7 @@ def load_config(path: str | Path | None) -> Config:
         meters=meters,
         mqtt=_build(MqttConfig, raw.get("mqtt")),
         poll_interval=int(raw.get("poll_interval", 900)),
+        state_file=str(raw.get("state_file", "/var/lib/mbus-reader/state.json")),
     )
     # la password può arrivare dall'ambiente, per non scriverla nel file
     cfg.mqtt.password = os.environ.get("MQTT_PASSWORD", cfg.mqtt.password)

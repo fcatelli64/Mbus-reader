@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
+import queue
 import threading
 import time
 import unicodedata
@@ -51,6 +53,56 @@ def merge_state(telegrams: list[Telegram]) -> dict:
     state: dict = {}
     for t in telegrams:
         state.update(t.as_dict())
+    return state
+
+
+class OffsetStore:
+    """Correzioni delle letture dei contatori dell'acqua, salvate su file.
+
+    Il contabilizzatore conta gli impulsi a partire da un valore che può non
+    coincidere con quello del contatore fisico: la differenza (pochi litri)
+    viene memorizzata qui e sommata alla lettura mostrata.
+    """
+
+    def __init__(self, path: str | None):
+        self.path = path
+        self.data: dict[str, dict[str, float]] = {}
+        if path and os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    self.data = json.load(fh)
+            except (OSError, ValueError) as exc:
+                log.warning("correzioni non leggibili da %s: %s", path, exc)
+
+    def get(self, meter_id: str, n: int) -> float:
+        return float(self.data.get(meter_id, {}).get(str(n), 0.0))
+
+    def set(self, meter_id: str, n: int, offset: float) -> None:
+        self.data.setdefault(meter_id, {})[str(n)] = offset
+        if not self.path:
+            return
+        try:
+            os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+            tmp = self.path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(self.data, fh, indent=1)
+            os.replace(tmp, self.path)
+        except OSError as exc:
+            log.warning("correzione non salvata su %s (vale fino al riavvio): %s", self.path, exc)
+
+
+def build_state(telegrams: list[Telegram], store: OffsetStore | None = None) -> dict:
+    """Stato pubblicato: valori del contatore più le letture dell'acqua corrette."""
+    state = merge_state(telegrams)
+    meter_id = telegrams[0].meter_id
+    for n in (1, 2):
+        key = f"volume_u{n}"
+        if key not in state:
+            continue
+        raw = state[key]
+        offset = store.get(meter_id, n) if store else 0.0
+        state[f"water{n}_reading"] = (
+            round(raw + offset, 3) if isinstance(raw, (int, float)) else None)
     return state
 
 
@@ -104,6 +156,33 @@ def discovery_messages(cfg: Config, meter: MeterConfig, telegrams: list[Telegram
             if r.storage or r.quantity in _DIAGNOSTIC or re.search(r"_x[0-9a-f]{2}", r.key):
                 payload["entity_category"] = "diagnostic"
             out[f"{cfg.mqtt.discovery_prefix}/sensor/{uid}/{r.key}/config"] = payload
+    keys = {r.key for t in telegrams for r in t.records}
+    for n, label in ((1, meter.input1), (2, meter.input2)):
+        if f"volume_u{n}" not in keys:
+            continue
+        # campo modificabile: scrivendo la lettura del contatore fisico, il
+        # programma memorizza la differenza rispetto al conteggio M-Bus
+        out[f"{cfg.mqtt.discovery_prefix}/number/{uid}/water{n}_reading/config"] = {
+            **common,
+            "name": f"{label} lettura reale",
+            "unique_id": f"{uid}_water{n}_reading",
+            "command_topic": f"{base}/water{n}/set",
+            "value_template": f"{{{{ value_json.water{n}_reading }}}}",
+            "unit_of_measurement": "m³",
+            "device_class": "water",
+            "min": 0, "max": 999999, "step": 0.001, "mode": "box",
+            "entity_category": "config",
+        }
+    out[f"{cfg.mqtt.discovery_prefix}/button/{uid}/read/config"] = {
+        "name": "Leggi ora",
+        "unique_id": f"{uid}_read",
+        "command_topic": f"{base}/read",
+        "payload_press": "PRESS",
+        "icon": "mdi:refresh",
+        # utilizzabile anche se il contatore risulta non disponibile
+        "availability": [{"topic": bridge_topic(cfg)}],
+        "device": device,
+    }
     for key, name, device_class in _BINARY:
         out[f"{cfg.mqtt.discovery_prefix}/binary_sensor/{uid}/{key}/config"] = {
             **common,
@@ -118,18 +197,19 @@ def discovery_messages(cfg: Config, meter: MeterConfig, telegrams: list[Telegram
 
 # ------------------------------------------------------------------ sorgenti
 
-def read_all(cfg: Config) -> Iterator[Result]:
-    """Legge tutti i contatori configurati; un errore non blocca gli altri."""
+def read_all(cfg: Config, meters: list[MeterConfig] | None = None) -> Iterator[Result]:
+    """Legge i contatori (tutti, o solo quelli indicati); un errore non blocca gli altri."""
+    meters = cfg.meters if meters is None else meters
     bus = MBusClient(cfg.serial.port, cfg.serial.baudrate, cfg.serial.timeout,
                         cfg.serial.retries, wakeup=cfg.serial.wakeup)
     try:
         bus.open()
     except Exception as exc:
-        for meter in cfg.meters:
+        for meter in meters:
             yield meter, exc
         return
     try:
-        for meter in cfg.meters:
+        for meter in meters:
             try:
                 yield meter, bus.read(meter.primary_address, meter.secondary_address)
             except Exception as exc:
@@ -154,7 +234,7 @@ _SIM = (
 )
 
 
-def simulate_all(cfg: Config) -> Iterator[Result]:
+def simulate_all(cfg: Config, meters: list[MeterConfig] | None = None) -> Iterator[Result]:
     """Dati finti ma plausibili, per preparare Home Assistant senza contatori.
 
     Energia e volume restano volutamente senza valore ("sconosciuto"): numeri
@@ -162,6 +242,8 @@ def simulate_all(cfg: Config) -> Iterator[Result]:
     Energia, falsando i consumi quando arriveranno le letture vere.
     """
     for n, meter in enumerate(cfg.meters):
+        if meters is not None and meter not in meters:
+            continue
         if not meter.secondary_address:
             yield meter, ValueError("per la simulazione serve 'secondary_address'")
             continue
@@ -191,9 +273,14 @@ def simulate_all(cfg: Config) -> Iterator[Result]:
 
 # -------------------------------------------------------------------- ciclo
 
-def run(cfg: Config, once: bool = False, source: Callable[[Config], Iterator] = read_all,
+def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_all,
         interval: int | None = None) -> None:
-    """Ciclo principale: lettura periodica e pubblicazione su MQTT."""
+    """Ciclo principale: lettura periodica e pubblicazione su MQTT.
+
+    Nel servizio continuo ascolta anche i comandi di Home Assistant: il
+    pulsante "Leggi ora" e la scrittura della lettura reale dei contatori
+    dell'acqua.
+    """
     import paho.mqtt.client as mqtt
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=cfg.mqtt.client_id)
@@ -201,18 +288,33 @@ def run(cfg: Config, once: bool = False, source: Callable[[Config], Iterator] = 
         client.username_pw_set(cfg.mqtt.username, cfg.mqtt.password)
     client.will_set(bridge_topic(cfg), "offline", qos=1, retain=True)
 
+    base_topic = cfg.mqtt.base_topic
     ha_status = f"{cfg.mqtt.discovery_prefix}/status"
     resend_discovery = threading.Event()
+    commands: queue.Queue = queue.Queue()
 
     def on_connect(c, userdata, flags, reason_code, properties):
         log.info("MQTT connesso a %s:%s (%s)", cfg.mqtt.host, cfg.mqtt.port, reason_code)
         c.subscribe(ha_status)
+        if not once:
+            for suffix in ("read", "water1/set", "water2/set"):
+                c.subscribe(f"{base_topic}/+/{suffix}", qos=1)
         c.publish(bridge_topic(cfg), "online", qos=1, retain=True)
         resend_discovery.set()
 
     def on_message(c, userdata, msg):
-        if msg.topic == ha_status and msg.payload == b"online":
-            resend_discovery.set()  # Home Assistant è ripartito
+        if msg.topic == ha_status:
+            if msg.payload == b"online":
+                resend_discovery.set()  # Home Assistant è ripartito
+            return
+        parts = msg.topic[len(base_topic) + 1:].split("/")
+        if len(parts) == 2 and parts[1] == "read":
+            commands.put(("read", parts[0]))
+        elif len(parts) == 3 and parts[1] in ("water1", "water2") and parts[2] == "set":
+            try:
+                commands.put(("set", parts[0], int(parts[1][-1]), float(msg.payload)))
+            except ValueError:
+                log.warning("valore non numerico su %s: %r", msg.topic, msg.payload)
 
     client.on_connect = on_connect
     client.on_message = on_message
@@ -220,10 +322,71 @@ def run(cfg: Config, once: bool = False, source: Callable[[Config], Iterator] = 
     client.loop_start()
 
     interval = interval or cfg.poll_interval
+    store = OffsetStore(cfg.state_file)
+    by_id: dict[str, MeterConfig] = {
+        m.secondary_address: m for m in cfg.meters if m.secondary_address}
+    last_read: dict[str, list[Telegram]] = {}
     discovered: set[str] = set()
     failures: dict[str, int] = {}
     last = None
     ok = True
+
+    def publish(meter: MeterConfig, result: list[Telegram]):
+        nonlocal last
+        meter_id = result[0].meter_id
+        by_id[meter_id] = meter
+        last_read[meter_id] = result
+        base = f"{base_topic}/{meter_id}"
+        if meter_id not in discovered:
+            discovered.add(meter_id)
+            for topic, payload in discovery_messages(cfg, meter, result).items():
+                client.publish(topic, json.dumps(payload, ensure_ascii=False), qos=1, retain=True)
+        client.publish(f"{base}/availability", "online", qos=1, retain=True)
+        last = client.publish(
+            f"{base}/state", json.dumps(build_state(result, store), ensure_ascii=False),
+            qos=1, retain=True)
+
+    def poll(meters: list[MeterConfig] | None = None) -> None:
+        nonlocal ok
+        for meter, result in source(cfg, meters):
+            if isinstance(result, Exception):
+                ok = False
+                failures[meter.name] = failures.get(meter.name, 0) + 1
+                log.warning("%s: lettura fallita (%d): %s", meter.name,
+                            failures[meter.name], result)
+                if failures[meter.name] == 3 and meter.secondary_address:
+                    client.publish(f"{base_topic}/{meter.secondary_address}/availability",
+                                   "offline", qos=1, retain=True)
+                continue
+            failures[meter.name] = 0
+            publish(meter, result)
+            log.info("%s (%s): %d valori pubblicati", meter.name, result[0].meter_id,
+                     sum(len(t.records) for t in result))
+
+    def handle(command: tuple) -> None:
+        kind, meter_id = command[0], command[1]
+        meter = by_id.get(meter_id)
+        if meter is None:
+            log.warning("comando per un contatore sconosciuto: %s", meter_id)
+            return
+        if kind == "read":
+            log.info("%s: lettura richiesta da Home Assistant", meter.name)
+            poll([meter])
+            return
+        n, value = command[2], command[3]
+        poll([meter])  # la lettura reale va confrontata con un conteggio appena letto
+        result = last_read.get(meter_id)
+        raw = merge_state(result).get(f"volume_u{n}") if result else None
+        if not isinstance(raw, (int, float)):
+            log.warning("%s: nessun conteggio disponibile per l'ingresso %d, "
+                        "lettura reale non applicata", meter.name, n)
+            return
+        offset = round(value - raw, 3)
+        store.set(meter_id, n, offset)
+        log.info("%s: ingresso %d allineato a %.3f m³ (conteggio %.3f, correzione %+.3f)",
+                 meter.name, n, value, raw, offset)
+        publish(meter, result)
+
     try:
         while True:
             # senza broker le letture andrebbero perse (e consumano batteria)
@@ -240,38 +403,27 @@ def run(cfg: Config, once: bool = False, source: Callable[[Config], Iterator] = 
             if resend_discovery.is_set():
                 resend_discovery.clear()
                 discovered.clear()
-            for meter, result in source(cfg):
-                if isinstance(result, Exception):
-                    ok = False
-                    failures[meter.name] = failures.get(meter.name, 0) + 1
-                    log.warning("%s: lettura fallita (%d): %s", meter.name,
-                                failures[meter.name], result)
-                    if failures[meter.name] == 3 and meter.secondary_address:
-                        client.publish(
-                            f"{cfg.mqtt.base_topic}/{meter.secondary_address}/availability",
-                            "offline", qos=1, retain=True)
-                    continue
-                failures[meter.name] = 0
-                meter_id = result[0].meter_id
-                base = f"{cfg.mqtt.base_topic}/{meter_id}"
-                if meter_id not in discovered:
-                    discovered.add(meter_id)
-                    for topic, payload in discovery_messages(cfg, meter, result).items():
-                        client.publish(topic, json.dumps(payload, ensure_ascii=False),
-                                       qos=1, retain=True)
-                client.publish(f"{base}/availability", "online", qos=1, retain=True)
-                last = client.publish(
-                    f"{base}/state", json.dumps(merge_state(result), ensure_ascii=False),
-                    qos=1, retain=True)
-                log.info("%s (%s): %d valori pubblicati", meter.name, meter_id,
-                         sum(len(t.records) for t in result))
+            poll()
             if once:
                 if last is not None:
                     last.wait_for_publish(10)
                 if not ok:
                     raise SystemExit(1)
                 return
-            time.sleep(max(5.0, interval - (time.monotonic() - started)))
+            # fino al prossimo giro si eseguono i comandi di Home Assistant
+            deadline = time.monotonic() + max(5.0, interval - (time.monotonic() - started))
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    command = commands.get(timeout=remaining)
+                except queue.Empty:
+                    break
+                try:
+                    handle(command)
+                except Exception as exc:  # un comando sbagliato non ferma il servizio
+                    log.warning("comando %s non eseguito: %s", command[0], exc)
     finally:
         # Arresto pulito del servizio continuo: il "last will" non scatterebbe.
         # Dopo una lettura singola (--once) i valori devono invece restare
@@ -332,8 +484,33 @@ def dashboard(cfg: Config) -> dict:
     }
     if len(cfg.meters) > 1:
         sections.insert(0, summary)
-    return {"views": [{"title": "Calore", "path": "calore", "icon": "mdi:radiator",
-                       "type": "sections", "max_columns": 3, "sections": sections}]}
+    def ent(domain: str, meter: MeterConfig, name: str) -> str:
+        return f"{domain}.{slugify(meter.name + ' ' + name)}"
+
+    # vista per allineare le letture dell'acqua al contatore fisico
+    align = [{
+        "type": "grid",
+        "cards": [
+            {"type": "heading", "heading": meter.name, "icon": "mdi:water"},
+            {"type": "entities", "entities": [
+                {"entity": ent("button", meter, "Leggi ora"), "name": "Leggi ora"},
+                {"entity": ent("number", meter, f"{meter.input1} lettura reale"),
+                 "name": f"{meter.input1} · lettura reale"},
+                {"entity": ent("sensor", meter, meter.input1),
+                 "name": f"{meter.input1} · conteggio contabilizzatore"},
+                {"entity": ent("number", meter, f"{meter.input2} lettura reale"),
+                 "name": f"{meter.input2} · lettura reale"},
+                {"entity": ent("sensor", meter, meter.input2),
+                 "name": f"{meter.input2} · conteggio contabilizzatore"},
+            ]},
+        ],
+    } for meter in cfg.meters]
+    return {"views": [
+        {"title": "Calore", "path": "calore", "icon": "mdi:radiator",
+         "type": "sections", "max_columns": 3, "sections": sections},
+        {"title": "Allineamento acqua", "path": "acqua", "icon": "mdi:water-sync",
+         "type": "sections", "max_columns": 3, "sections": align},
+    ]}
 
 
 def panel_config(cfg: Config) -> dict:

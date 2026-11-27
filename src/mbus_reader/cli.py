@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
                 # nome diverso dal servizio continuo: due client con lo stesso id
                 # si scollegano a vicenda e la pubblicazione può andare persa
                 cfg.mqtt.client_id += "-optical"
-                run(cfg, once=True, source=lambda _cfg: iter([(meter, [telegram])]))
+                run(cfg, once=True, source=lambda _cfg, _meters=None: iter([(meter, [telegram])]))
             return 0
         if args.command == "run":
             from .ha import run

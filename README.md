@@ -188,6 +188,28 @@ il file, aumenta il numero in `?v=1` e riavvia, altrimenti il browser usa la
 copia vecchia. Su smartphone la barra laterale è già nascosta; su PC si può
 nascondere dal profilo utente ("Nascondi sempre la barra laterale").
 
+## Lettura a richiesta e allineamento dei contatori dell'acqua
+
+Con il servizio continuo attivo, ogni contabilizzatore ha in Home Assistant:
+
+- un pulsante **Leggi ora**, che fa partire subito una lettura M-Bus di quel
+  contabilizzatore senza aspettare il giro successivo;
+- due campi **lettura reale** (acqua fredda e calda), modificabili.
+
+Il contabilizzatore conta gli impulsi dei contatori dell'acqua a partire da un
+valore che può differire di qualche decina di litri da quello del contatore
+fisico. Per allineare: premi *Leggi ora*, leggi il contatore fisico e scrivi
+il valore nel campo *lettura reale*. Il programma rilegge il contabilizzatore,
+memorizza la differenza in `/var/lib/mbus-reader/state.json` e da quel momento
+mostra la lettura corretta (anche nel pannello per smartphone).
+
+La correzione riguarda solo la lettura mostrata: i sensori *Acqua fredda* e
+*Acqua calda*, da cui si calcolano i consumi, restano il conteggio originale,
+così l'allineamento non genera consumi fittizi.
+
+`mbus-reader -c … dashboard` genera anche la vista "Allineamento acqua" con
+pulsante, campi e conteggi di tutti i contabilizzatori.
+
 ## Note
 
 - **Frequenza di lettura**: il manuale del SensoStar 2/2+ (certificato PTB025)
