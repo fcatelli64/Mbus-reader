@@ -661,7 +661,6 @@ class CalorePanel extends HTMLElement {
         <div><div class="t">${esc(m.name)}</div><div class="muted">Contabilizzatore</div></div>
         <div class="badge"><span class="dot ${online ? "" : "off"}"></span>${online ? "Online" : "Offline"}</div></div>
       <div class="card datebar">${icon("calendar")}<span>${date}</span><span class="h">${time}</span></div>
-      ${this._healthCard(m)}
       <div class="row">
         ${metric("flow", "Portata", `${fmt(this._num(m, "flow"), 2)} m³/h`)}
         ${metric("heat", "Potenza istantanea", `${fmt(p == null ? null : Math.abs(p), 1)} kW`)}
@@ -689,6 +688,7 @@ class CalorePanel extends HTMLElement {
         ${data ? this._powerChart(data.power) : `<div class="empty">Caricamento…</div>`}</div>
       <div class="card"><div class="label">Energia · ultimi 6 mesi</div>
         ${data ? this._energyChart(data, hasCool) : `<div class="empty">Caricamento…</div>`}</div>
+      ${this._healthCard(m)}
       <div class="foot">Ultimo aggiornamento ${upd}${this._demo ? " · Dati di esempio" : ""}</div>
       <button class="homebtn" data-go="">${icon("home")}Home</button>`;
   }
