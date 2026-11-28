@@ -30,6 +30,9 @@ const ICON = {
   home: '<path d="M3 11.2 12 3l9 8.2V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" fill="currentColor" stroke="none"/>',
   building: '<path d="M5 21V8l7-4 7 4v13M3 21h18M9 11h2M13 11h2M9 15h2M13 15h2M11 21v-3h2v3"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
+  battery: '<path d="M3 8h15v8H3zM18 10.5h2.5v3H18"/>',
+  alert: '<path d="M12 4 2.5 20h19zM12 10v5M12 17.6v.2"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   back: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
   heat: '<path d="M7 4c-2 3 2 5 0 8s2 5 0 8M12 4c-2 3 2 5 0 8s2 5 0 8M17 4c-2 3 2 5 0 8s2 5 0 8"/>',
   flow: '<path d="M3 8c3-3 5 3 9 0s6 3 9 0M3 13c3-3 5 3 9 0s6 3 9 0M3 18c3-3 5 3 9 0s6 3 9 0"/>',
@@ -95,6 +98,20 @@ h2{font-size:21px;margin:4px 4px -2px;font-weight:800}
 .tile.off{background:rgba(255,255,255,.35);border:1.5px dashed #a9b7c9;box-shadow:none;color:#7b8798;cursor:default}
 .tile.off .ic.b{color:#7b8798}
 .tile .pw{font-size:11.5px;color:#55617a;white-space:nowrap}
+.tile.ok{background:#e8f8ee;box-shadow:inset 0 0 0 1.5px #7fd49b,0 2px 10px rgba(40,90,150,.10)}
+.tile.ok .ic.b{color:#1f9d55}
+.tile.warn{background:#fff4d6;box-shadow:inset 0 0 0 1.5px #f0bf45,0 2px 10px rgba(40,90,150,.10)}
+.tile.warn .ic.b{color:#b7791f}
+.tile.err{background:#fde6e6;box-shadow:inset 0 0 0 1.5px #ee8080,0 2px 10px rgba(40,90,150,.10)}
+.tile.err .ic.b{color:#d64545}
+.keys{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 14px;font-size:12px;color:#55617a}
+.keys i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.health{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.health>div{display:flex;align-items:center;gap:12px}
+.health .ic{width:26px;height:26px}
+.health .k{font-size:13.5px;color:#55617a;line-height:1.2}
+.health .v{font-size:17px;font-weight:700;line-height:1.25}
+.c-ok{color:#1f9d55}.c-warn{color:#b7791f}.c-err{color:#d64545}.c-off{color:#7a869c}
 .head{display:flex;align-items:center;gap:12px}
 .head button{background:none;border:0;padding:6px;color:inherit;cursor:pointer;display:flex}
 .head .ic{width:30px;height:30px}
@@ -231,6 +248,30 @@ class CalorePanel extends HTMLElement {
     if (this._demo) return true;
     const st = this._state(m, "power");
     return !!st && st.state !== "unavailable";
+  }
+  // stato di salute: "off" non collegato, "ok", "warn" batteria scarica, "err" errore
+  _health(m) {
+    const i = Math.max(0, this._meters.indexOf(m));
+    if (this._demo) {
+      const battery = i === 3 || i === 6, errors = i === 6 ? ["Errore temporaneo"] : [];
+      return { level: errors.length ? "err" : battery ? "warn" : "ok", battery, days: 3650 + i * 40, errors };
+    }
+    const hs = (this._hass && this._hass.states) || {};
+    const on = (suffix) => (hs[`binary_sensor.${m.id}_${suffix}`] || {}).state === "on";
+    const num = (suffix) => {
+      const st = hs[`sensor.${m.id}_${suffix}`];
+      const v = st ? parseFloat(st.state) : NaN;
+      return Number.isNaN(v) ? null : v;
+    };
+    const known = !!hs[`binary_sensor.${m.id}_batteria_scarica`];
+    const errors = [];
+    if (on("errore_permanente")) errors.push("Errore permanente");
+    if (on("errore_temporaneo")) errors.push("Errore temporaneo");
+    const flags = num("flag_di_errore");
+    if (flags) errors.push(`Codice errore ${flags}`);
+    const battery = known ? on("batteria_scarica") : null;
+    const level = !this._online(m) ? "off" : errors.length ? "err" : battery ? "warn" : "ok";
+    return { level, battery, days: num("tempo_di_accensione"), errors };
   }
   _demoValue(m, key) {
     const i = Math.max(0, this._meters.indexOf(m));
@@ -550,7 +591,8 @@ class CalorePanel extends HTMLElement {
     const wait = md ? "—" : "…";
     const tiles = this._meters.map((m) => {
       const p = this._num(m, "power");
-      return `<button class="card tile" data-go="${esc(m.id)}">${icon("building", "b")}
+      const level = this._health(m).level;
+      return `<button class="card tile ${level === "off" ? "" : level}" data-go="${esc(m.id)}">${icon("building", "b")}
         <div class="n">${esc(m.name)}</div>
         <div class="pw">${this._online(m) ? (p == null ? "—" : `${fmt(Math.abs(p), 1)} kW`) : "n.d."}</div></button>`;
     });
@@ -573,7 +615,28 @@ class CalorePanel extends HTMLElement {
       </div>
       <h2>${esc(cfg.group_title || "Condomini")}</h2>
       <div class="tiles">${tiles.join("")}</div>
+      <div class="keys"><span><i style="background:#7fd49b"></i>Regolare</span><span><i style="background:#f0bf45"></i>Batteria scarica</span><span><i style="background:#ee8080"></i>Errore</span><span><i style="background:#fff;box-shadow:inset 0 0 0 1px #c3cedb"></i>Non collegato</span></div>
       <div class="foot">Aggiornato alle ${time}${this._demo ? " · Dati di esempio" : ""}</div>`;
+  }
+
+  _healthCard(m) {
+    const h = this._health(m);
+    const row = (ic, cls, k, v) => `<div><span class="${cls}">${icon(ic)}</span><div><div class="k">${k}</div><div class="v ${cls}">${v}</div></div></div>`;
+    const battery = h.battery == null
+      ? row("battery", "c-off", "Batteria", "Stato non disponibile")
+      : h.battery ? row("battery", "c-warn", "Batteria", "Scarica")
+        : row("battery", "c-ok", "Batteria", "Regolare");
+    let age = "";
+    if (h.days != null) {
+      const years = Math.floor(h.days / 365.25), months = Math.floor((h.days - years * 365.25) / 30.44);
+      const span = [years ? `${years} ${years === 1 ? "anno" : "anni"}` : "", months ? `${months} ${months === 1 ? "mese" : "mesi"}` : ""].filter(Boolean).join(" e ");
+      age = row("calendar", "", "In funzione da", `${fmt(h.days)} giorni${span ? ` (${span})` : ""}`);
+    }
+    const errors = h.level === "off" && !h.errors.length
+      ? row("alert", "c-off", "Errori", "Contabilizzatore non collegato")
+      : h.errors.length ? row("alert", "c-err", "Errori", h.errors.map(esc).join("<br>"))
+        : row("check", "c-ok", "Errori", "Nessuno");
+    return `<div class="card"><div class="label">Stato del contabilizzatore</div><div class="health">${battery}${age}${errors}</div></div>`;
   }
 
   _detail(m, now) {
@@ -593,6 +656,7 @@ class CalorePanel extends HTMLElement {
         <div><div class="t">${esc(m.name)}</div><div class="muted">Contabilizzatore</div></div>
         <div class="badge"><span class="dot ${online ? "" : "off"}"></span>${online ? "Online" : "Offline"}</div></div>
       <div class="card datebar">${icon("calendar")}<span>${date}</span><span class="h">${time}</span></div>
+      ${this._healthCard(m)}
       <div class="row">
         ${metric("flow", "Portata", `${fmt(this._num(m, "flow"), 2)} m³/h`)}
         ${metric("heat", "Potenza istantanea", `${fmt(p == null ? null : Math.abs(p), 1)} kW`)}
@@ -667,6 +731,10 @@ class CalorePanel extends HTMLElement {
       const ids = [];
       for (const x of m ? [m] : this._meters)
         for (const k of ["power", "flow", "t_in", "t_out", "energy", "cooling", "water_hot", "water_cold"]) ids.push(this._entity(x, k));
+      for (const x of this._meters) {
+        for (const k of ["batteria_scarica", "errore_permanente", "errore_temporaneo"]) ids.push(`binary_sensor.${x.id}_${k}`);
+        ids.push(`sensor.${x.id}_flag_di_errore`, `sensor.${x.id}_tempo_di_accensione`);
+      }
       const wid = this._config.weather || Object.keys(this._hass.states).find((k) => k.startsWith("weather."));
       if (!m && wid) ids.push(wid);
       for (const id of ids) {
