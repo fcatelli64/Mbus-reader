@@ -150,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             # nome diverso dal servizio vero: due client con lo stesso id si
             # scollegano a vicenda in continuazione
             cfg.mqtt.client_id += "-sim"
-            run(cfg, once=args.once, source=simulate_all, interval=args.interval)
+            run(cfg, once=args.once, source=simulate_all, interval=args.interval, simulated=True)
             return 0
         if args.command == "panel":
             import yaml

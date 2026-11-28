@@ -384,3 +384,23 @@ def test_read_button_and_water_alignment(tmp_path, monkeypatch):
 
     text = str(dashboard(cfg))
     assert "number.catelli_acqua_fredda_lettura_reale" in text and "button.catelli_leggi_ora" in text
+
+
+def test_unconnected_meter_goes_offline_at_once(monkeypatch):
+    import paho.mqtt.client as mqtt
+
+    monkeypatch.setattr(mqtt, "Client", FakeMqtt)
+    cfg = Config(meters=[MeterConfig(name="Catelli", secondary_address="61382914"),
+                         MeterConfig(name="Voccia", secondary_address="61182570")],
+                 state_file=None)
+    telegram = decode_telegram(frames.next_frame(SENSOSTAR_RAW)[0])
+
+    def source(_cfg, meters=None):
+        yield _cfg.meters[0], [telegram]
+        yield _cfg.meters[1], MBusTimeout("nessuna risposta dal contatore")
+
+    with pytest.raises(SystemExit):
+        run(cfg, once=True, source=source)
+    published = dict(FakeMqtt.last.published)
+    assert published["mbus/61382914/availability"] == "online"
+    assert published["mbus/61182570/availability"] == "offline"

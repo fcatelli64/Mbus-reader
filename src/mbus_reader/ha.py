@@ -274,7 +274,7 @@ def simulate_all(cfg: Config, meters: list[MeterConfig] | None = None) -> Iterat
 # -------------------------------------------------------------------- ciclo
 
 def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_all,
-        interval: int | None = None) -> None:
+        interval: int | None = None, simulated: bool = False) -> None:
     """Ciclo principale: lettura periodica e pubblicazione su MQTT.
 
     Nel servizio continuo ascolta anche i comandi di Home Assistant: il
@@ -354,7 +354,12 @@ def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_
                 failures[meter.name] = failures.get(meter.name, 0) + 1
                 log.warning("%s: lettura fallita (%d): %s", meter.name,
                             failures[meter.name], result)
-                if failures[meter.name] == 3 and meter.secondary_address:
+                # Un contatore mai letto da quando il servizio è partito (non
+                # ancora collegato, o dati rimasti da una simulazione) viene
+                # segnato subito come non disponibile; uno che funzionava,
+                # solo dopo tre letture fallite di fila.
+                never_read = meter.secondary_address not in last_read
+                if meter.secondary_address and (never_read or failures[meter.name] == 3):
                     client.publish(f"{base_topic}/{meter.secondary_address}/availability",
                                    "offline", qos=1, retain=True)
                 continue
@@ -435,7 +440,14 @@ def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_
         # Dopo una lettura singola (--once) i valori devono invece restare
         # visibili in Home Assistant.
         if client.is_connected() and not once:
-            client.publish(bridge_topic(cfg), "offline", qos=1, retain=True).wait_for_publish(5)
+            if simulated:
+                # la simulazione, fermandosi, toglie di mezzo solo i propri
+                # contatori finti e non tocca lo stato del servizio vero
+                for meter_id in last_read:
+                    client.publish(f"{base_topic}/{meter_id}/availability", "offline",
+                                   qos=1, retain=True)
+            client.publish(bridge_topic(cfg), "online" if simulated else "offline",
+                           qos=1, retain=True).wait_for_publish(5)
         client.loop_stop()
         client.disconnect()
 
