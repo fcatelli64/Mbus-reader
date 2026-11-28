@@ -406,3 +406,16 @@ def test_unconnected_meter_goes_offline_at_once(monkeypatch):
     published = dict(FakeMqtt.last.published)
     assert published["mbus/61382914/availability"] == "online"
     assert published["mbus/61182570/availability"] == "offline"
+
+
+def test_stuck_adapter_does_not_hang():
+    class Stuck(FakeSerial):
+        out_waiting = 5  # l'adattatore non smaltisce mai i byte
+
+    from mbus_reader.client import MBusError
+
+    with MBusClient("x", timeout=0.2, retries=1, serial_factory=lambda: Stuck({})) as bus:
+        bus._drain.__func__.__defaults__ = (0.2,)
+        with pytest.raises(MBusError, match="non trasmette"):
+            bus.read(secondary="61382914")
+    MBusClient._drain.__defaults__ = (4.0,)

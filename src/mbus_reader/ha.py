@@ -344,6 +344,22 @@ def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_
     last = None
     ok = True
 
+    # Cane da guardia: se il ciclo resta bloccato (porta seriale che non
+    # risponde, ad esempio) il processo esce e systemd lo fa ripartire.
+    heartbeat = [time.monotonic()]
+    stall_limit = interval + 300
+
+    def watchdog() -> None:
+        while True:
+            time.sleep(30)
+            stalled = time.monotonic() - heartbeat[0]
+            if stalled > stall_limit:
+                log.error("servizio bloccato da %d secondi: riavvio", stalled)
+                os._exit(1)
+
+    if not once:
+        threading.Thread(target=watchdog, daemon=True).start()
+
     def publish(meter: MeterConfig, result: list[Telegram]):
         nonlocal last
         meter_id = result[0].meter_id
@@ -361,6 +377,7 @@ def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_
     def poll(meters: list[MeterConfig] | None = None) -> None:
         nonlocal ok
         for meter, result in source(cfg, meters):
+            heartbeat[0] = time.monotonic()
             if isinstance(result, Exception):
                 ok = False
                 failures[meter.name] = failures.get(meter.name, 0) + 1
@@ -422,7 +439,7 @@ def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_
                 if once:
                     raise SystemExit(1)
                 continue
-            started = time.monotonic()
+            started = heartbeat[0] = time.monotonic()
             if resend_discovery.is_set():
                 resend_discovery.clear()
                 discovered.clear()
@@ -439,6 +456,7 @@ def run(cfg: Config, once: bool = False, source: Callable[..., Iterator] = read_
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     break
+                heartbeat[0] = time.monotonic()
                 try:
                     command = commands.get(timeout=remaining)
                 except queue.Empty:

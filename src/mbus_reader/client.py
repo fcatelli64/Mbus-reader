@@ -42,7 +42,7 @@ class MBusClient:
 
             self._ser = serial.Serial(
                 self.port, self.baudrate, bytesize=8, parity=serial.PARITY_EVEN,
-                stopbits=1, timeout=0.1,
+                stopbits=1, timeout=0.1, write_timeout=3,
             )
         time.sleep(0.3)  # lascia stabilizzare la tensione del bus
         self._ser.reset_input_buffer()
@@ -72,7 +72,7 @@ class MBusClient:
         ser.reset_input_buffer()
         log.debug("TX %s", request.hex(" "))
         ser.write(request)
-        ser.flush()
+        self._drain()
         deadline = time.monotonic() + (timeout or self.timeout)
         buf = bytearray()
         echo_pending = True
@@ -92,6 +92,20 @@ class MBusClient:
                     continue
                 return frame
         raise MBusTimeout("nessuna risposta dal contatore")
+
+    def _drain(self, limit: float = 4.0) -> None:
+        """Attende che i byte scritti siano partiti, ma mai all'infinito.
+
+        ``flush()`` può restare bloccato per sempre se l'adattatore USB smette
+        di rispondere; qui dopo qualche secondo si rinuncia con un errore, così
+        il servizio prosegue con il contatore successivo.
+        """
+        ser = self._ser
+        end = time.monotonic() + limit
+        while getattr(ser, "out_waiting", 0):
+            if time.monotonic() > end:
+                raise MBusError(f"la porta {self.port} non trasmette (adattatore bloccato?)")
+            time.sleep(0.005)
 
     def _retry(self, request: bytes, timeout: float | None = None) -> Frame:
         last: Exception | None = None
@@ -125,7 +139,8 @@ class MBusClient:
         except Exception:  # porta che non permette il cambio al volo: resta in 8E1
             log.debug("cambio di parità non supportato, risveglio in 8E1")
         ser.write(b"\x55" * count)
-        ser.flush()
+        self._drain()
+        time.sleep(180 / self.baudrate)  # ultimi byte ancora nel registro hardware
         try:
             ser.parity = "E"
         except Exception as exc:
@@ -208,7 +223,7 @@ class MBusClient:
                 count = int(self.baudrate / (10 if mode == "N" else 11) * 2.2)
                 ser.parity = mode
                 ser.write(b"\x55" * count)
-                ser.flush()
+                self._drain()
                 ser.parity = "E"
                 time.sleep(pause)
                 label = f"risveglio 8{mode}1 2,2 s, pausa {int(pause * 1000)} ms, {name}"
@@ -216,7 +231,7 @@ class MBusClient:
                 label = f"senza risveglio, {name}"
             ser.reset_input_buffer()
             ser.write(req)
-            ser.flush()
+            self._drain()
             buf = bytearray()
             deadline = time.monotonic() + listen
             while time.monotonic() < deadline:
@@ -229,7 +244,7 @@ class MBusClient:
                 # il contatore è sveglio: chiedi subito i dati
                 ser.reset_input_buffer()
                 ser.write(frames.req_ud2(frames.ADDR_BROADCAST_REPLY, True))
-                ser.flush()
+                self._drain()
                 buf = bytearray()
                 deadline = time.monotonic() + listen
                 while time.monotonic() < deadline:
@@ -256,7 +271,7 @@ class MBusClient:
             req = frames.req_ud2(frames.ADDR_BROADCAST_REPLY, fcb=bool(n % 2))
             ser.reset_input_buffer()
             ser.write(req)
-            ser.flush()
+            self._drain()
             buf = bytearray()
             deadline = time.monotonic() + listen
             frame = None
