@@ -372,6 +372,8 @@ def test_read_button_and_water_alignment(tmp_path, monkeypatch):
     assert states[-1]["water1_reading"] == 545.15   # lettura mostrata = contatore fisico
     assert states[-1]["volume_u1"] == 545.05        # il conteggio grezzo non cambia
     assert states[-1]["water2_reading"] == 257.47
+    assert states[-1]["last_read"].startswith("20") and "T" in states[-1]["last_read"]
+    assert "homeassistant/sensor/mbus_61382914/last_read/config" in dict(client.published)
     # la correzione è salvata e viene riletta al riavvio
     assert OffsetStore(cfg.state_file).get("61382914", 1) == pytest.approx(0.1)
 

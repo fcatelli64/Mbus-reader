@@ -656,7 +656,18 @@ class CalorePanel extends HTMLElement {
     const energy = this._num(m, "energy"), cooling = hasCool ? this._num(m, "cooling") : null;
     const data = (this._charts[m.id] || {}).data;
     const st = this._state(m, "power");
-    const upd = this._demo || !st ? time : new Date(st.last_updated).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+    // ora dell'ultima lettura M-Bus: la pubblica il servizio; in sua assenza si
+    // usa la variazione più recente tra i valori del contatore
+    const hs = (this._hass && this._hass.states) || {};
+    const readSt = hs[`sensor.${m.id}_ultima_lettura`];
+    let last = readSt && !Number.isNaN(Date.parse(readSt.state)) ? Date.parse(readSt.state) : 0;
+    if (!last) {
+      for (const k of ["power", "flow", "t_in", "t_out", "energy", "cooling", "water_hot", "water_cold"]) {
+        const e = this._state(m, k);
+        if (e && e.state !== "unavailable") last = Math.max(last, Date.parse(e.last_updated) || 0);
+      }
+    }
+    const upd = this._demo || !last ? time : new Date(last).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
     return `<div class="head"><button data-go="" aria-label="Indietro">${icon("back")}</button>
         <div><div class="t">${esc(m.name)}</div><div class="muted">Contabilizzatore</div></div>
         <div class="badge"><span class="dot ${online ? "" : "off"}"></span>${online ? "Online" : "Offline"}</div></div>
@@ -738,7 +749,7 @@ class CalorePanel extends HTMLElement {
         for (const k of ["power", "flow", "t_in", "t_out", "energy", "cooling", "water_hot", "water_cold"]) ids.push(this._entity(x, k));
       for (const x of this._meters) {
         for (const k of ["batteria_scarica", "errore_permanente", "errore_temporaneo"]) ids.push(`binary_sensor.${x.id}_${k}`);
-        ids.push(`sensor.${x.id}_flag_di_errore`, `sensor.${x.id}_tempo_di_accensione`);
+        ids.push(`sensor.${x.id}_flag_di_errore`, `sensor.${x.id}_tempo_di_accensione`, `sensor.${x.id}_ultima_lettura`);
       }
       const wid = this._config.weather || Object.keys(this._hass.states).find((k) => k.startsWith("weather."));
       if (!m && wid) ids.push(wid);

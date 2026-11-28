@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import os
+from datetime import datetime
 import queue
 import threading
 import time
@@ -103,6 +104,9 @@ def build_state(telegrams: list[Telegram], store: OffsetStore | None = None) -> 
         offset = store.get(meter_id, n) if store else 0.0
         state[f"water{n}_reading"] = (
             round(raw + offset, 3) if isinstance(raw, (int, float)) else None)
+    # momento della lettura: i valori che non cambiano (es. potenza a zero) non
+    # farebbero altrimenti capire a Home Assistant che il dato è fresco
+    state["last_read"] = datetime.now().astimezone().isoformat(timespec="seconds")
     return state
 
 
@@ -156,6 +160,14 @@ def discovery_messages(cfg: Config, meter: MeterConfig, telegrams: list[Telegram
             if r.storage or r.quantity in _DIAGNOSTIC or re.search(r"_x[0-9a-f]{2}", r.key):
                 payload["entity_category"] = "diagnostic"
             out[f"{cfg.mqtt.discovery_prefix}/sensor/{uid}/{r.key}/config"] = payload
+    out[f"{cfg.mqtt.discovery_prefix}/sensor/{uid}/last_read/config"] = {
+        **common,
+        "name": "Ultima lettura",
+        "unique_id": f"{uid}_last_read",
+        "device_class": "timestamp",
+        "entity_category": "diagnostic",
+        "value_template": "{{ value_json.last_read }}",
+    }
     keys = {r.key for t in telegrams for r in t.records}
     for n, label in ((1, meter.input1), (2, meter.input2)):
         if f"volume_u{n}" not in keys:
