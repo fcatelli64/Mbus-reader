@@ -98,20 +98,23 @@ h2{font-size:21px;margin:4px 4px -2px;font-weight:800}
 .tile.off{background:rgba(255,255,255,.35);border:1.5px dashed #a9b7c9;box-shadow:none;color:#7b8798;cursor:default}
 .tile.off .ic.b{color:#7b8798}
 .tile .pw{font-size:11.5px;color:#55617a;white-space:nowrap}
-.tile.ok{background:#e8f8ee;box-shadow:inset 0 0 0 1.5px #7fd49b,0 2px 10px rgba(40,90,150,.10)}
-.tile.ok .ic.b{color:#1f9d55}
-.tile.warn{background:#fff4d6;box-shadow:inset 0 0 0 1.5px #f0bf45,0 2px 10px rgba(40,90,150,.10)}
-.tile.warn .ic.b{color:#b7791f}
-.tile.err{background:#fde6e6;box-shadow:inset 0 0 0 1.5px #ee8080,0 2px 10px rgba(40,90,150,.10)}
-.tile.err .ic.b{color:#d64545}
+.tile{position:relative}
+.tile .st{position:absolute;top:4px;right:4px;display:flex}
+.tile .st .ic{width:15px;height:15px;stroke-width:2.6}
+.tile.ok{background:#22c55e;box-shadow:0 2px 10px rgba(40,90,150,.18)}
+.tile.warn{background:#fbbf24;box-shadow:0 2px 10px rgba(40,90,150,.18)}
+.tile.ok,.tile.warn,.tile.ok .pw,.tile.warn .pw,.tile.ok .ic.b,.tile.warn .ic.b{color:#0b1530}
+.tile.err{background:#b91c1c;box-shadow:0 2px 10px rgba(40,90,150,.18)}
+.tile.err,.tile.err .pw,.tile.err .ic.b{color:#fff}
 .keys{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 14px;font-size:12px;color:#55617a}
-.keys i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.keys i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-2px}
+.keys .ic{width:13px;height:13px;margin-right:3px;vertical-align:-2px;stroke-width:2.4;color:#0f1b3d}
 .health{display:flex;flex-direction:column;gap:10px;margin-top:10px}
 .health>div{display:flex;align-items:center;gap:12px}
 .health .ic{width:26px;height:26px}
 .health .k{font-size:13.5px;color:#55617a;line-height:1.2}
 .health .v{font-size:17px;font-weight:700;line-height:1.25}
-.c-ok{color:#1f9d55}.c-warn{color:#b7791f}.c-err{color:#d64545}.c-off{color:#7a869c}
+.c-ok{color:#15803d}.c-warn{color:#a16207}.c-err{color:#b91c1c}.c-off{color:#7a869c}
 .head{display:flex;align-items:center;gap:12px}
 .head button{background:none;border:0;padding:6px;color:inherit;cursor:pointer;display:flex}
 .head .ic{width:30px;height:30px}
@@ -592,7 +595,9 @@ class CalorePanel extends HTMLElement {
     const tiles = this._meters.map((m) => {
       const p = this._num(m, "power");
       const level = this._health(m).level;
-      return `<button class="card tile ${level === "off" ? "" : level}" data-go="${esc(m.id)}">${icon("building", "b")}
+      // lo stato non è affidato al solo colore: ogni riquadro ha anche un simbolo
+      const mark = { ok: "check", warn: "battery", err: "alert" }[level];
+      return `<button class="card tile ${level === "off" ? "" : level}" data-go="${esc(m.id)}">${mark ? `<span class="st">${icon(mark)}</span>` : ""}${icon("building", "b")}
         <div class="n">${esc(m.name)}</div>
         <div class="pw">${this._online(m) ? (p == null ? "—" : `${fmt(Math.abs(p), 1)} kW`) : "n.d."}</div></button>`;
     });
@@ -615,7 +620,7 @@ class CalorePanel extends HTMLElement {
       </div>
       <h2>${esc(cfg.group_title || "Condomini")}</h2>
       <div class="tiles">${tiles.join("")}</div>
-      <div class="keys"><span><i style="background:#7fd49b"></i>Regolare</span><span><i style="background:#f0bf45"></i>Batteria scarica</span><span><i style="background:#ee8080"></i>Errore</span><span><i style="background:#fff;box-shadow:inset 0 0 0 1px #c3cedb"></i>Non collegato</span></div>
+      <div class="keys"><span><i style="background:#22c55e"></i>${icon("check")}Regolare</span><span><i style="background:#fbbf24"></i>${icon("battery")}Batteria scarica</span><span><i style="background:#b91c1c"></i>${icon("alert")}Errore</span><span><i style="background:#fff;box-shadow:inset 0 0 0 1px #c3cedb"></i>Non collegato</span></div>
       <div class="foot">Aggiornato alle ${time}${this._demo ? " · Dati di esempio" : ""}</div>`;
   }
 
